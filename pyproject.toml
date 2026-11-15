@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "automatic-thumbnail"
+name = "thumbnail-companion-bridge"
 version = "1.0.0"
 description = "Proxmox LXC & Bitfocus Companion compatible REST HTTP service for automated livestreaming thumbnail generation"
 readme = "README.md"

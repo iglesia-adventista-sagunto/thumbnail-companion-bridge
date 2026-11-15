@@ -71,7 +71,7 @@ def load_config():
     else:
         logger.warning("No config.json or template found; using built-in defaults")
 
-    port = int(os.environ.get("PORT") or data.get("port", 5000))
+    port = int(os.environ.get("PORT") or data.get("port", 5001))
     output_dir = _resolve_dir(os.environ.get("OUTPUT_DIR") or data.get("output_dir"), "thumbnails")
     attributions_file = _resolve_dir(
         os.environ.get("ATTRIBUTIONS_FILE") or data.get("attributions_file"),
@@ -829,6 +829,12 @@ def youtube_auth_callback():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     return redirect("/ui?youtube=connected")
+
+
+@app.route("/youtube/disconnect", methods=["POST", "DELETE"])
+def youtube_disconnect():
+    removed = yt_service.disconnect()
+    return jsonify({"status": "disconnected", "token_removed": removed}), 200
 
 
 @app.route("/youtube/broadcasts", methods=["GET"])

@@ -1,0 +1,16 @@
+[Unit]
+Description=Thumbnail Companion Bridge (Bitfocus Companion & Livestreaming)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/thumbnail-companion-bridge
+Environment=PYTHONUNBUFFERED=1
+Environment=OAUTHLIB_INSECURE_TRANSPORT=1
+ExecStart=/opt/thumbnail-companion-bridge/start.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

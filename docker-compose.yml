@@ -1,13 +1,15 @@
 services:
-  automatic-thumbnail:
+  thumbnail-companion-bridge:
     build: .
-    container_name: automatic-thumbnail
+    container_name: thumbnail-companion-bridge
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "${PORT:-5001}:${PORT:-5001}"
     volumes:
       - ./config.json:/app/config.json:ro
       - ./thumbnails:/app/thumbnails
     environment:
       - PYTHONUNBUFFERED=1
       - CONFIG_PATH=/app/config.json
+      - PORT=${PORT:-5001}
+      - OAUTHLIB_INSECURE_TRANSPORT=1

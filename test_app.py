@@ -315,6 +315,11 @@ class TestAutomaticThumbnailBridge(unittest.TestCase):
             self.assertEqual(kwargs["title"], "Sermón - En Vivo")
             self.assertTrue(kwargs["thumbnail_path"].endswith("yt_latest.png"))
 
+        # Disconnect endpoint removes token cleanly
+        res_disc = self.client.post("/youtube/disconnect")
+        self.assertEqual(res_disc.status_code, 200)
+        self.assertEqual(json.loads(res_disc.data)["status"], "disconnected")
+
 
 if __name__ == "__main__":
     unittest.main()

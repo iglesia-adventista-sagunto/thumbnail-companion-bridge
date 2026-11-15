@@ -120,6 +120,9 @@ class YouTubeService:
         if not os.path.exists(self.client_secrets_file):
             raise FileNotFoundError(f"YouTube client_secrets.json not found at: {self.client_secrets_file}")
 
+        if str(redirect_uri).startswith(("http://localhost", "http://127.0.0.1")):
+            os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
+
         flow = Flow.from_client_secrets_file(
             self.client_secrets_file,
             scopes=YOUTUBE_SCOPES,
@@ -132,6 +135,13 @@ class YouTubeService:
         )
         self._pending_flows[state] = flow
         return auth_url, state
+
+    def disconnect(self):
+        self._pending_flows.clear()
+        if self.token_file and os.path.exists(self.token_file):
+            os.remove(self.token_file)
+            return True
+        return False
 
     def finish_auth(self, state, code):
         if not YOUTUBE_LIBS_AVAILABLE:

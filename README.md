@@ -39,7 +39,7 @@ flowchart LR
 
 - **Bitfocus Companion & Stream Deck Ready**: Trigger thumbnail generation via simple `GET` or `POST` requests (`/generate`, `/<preset>/generate`, `/batch`), with plaintext `/is_busy` and `/is_ready` endpoints for live button feedback.
 - **Livestreaming Presets**: Define reusable broadcast templates (`sabado`, `viernes`, `estudio`, etc.) in `config.json` and override `title`, `subtitle`, or `query` dynamically from Companion variables.
-- **Live Asset Serving (`/latest` & `/thumbnails/<file>`)**: Point ATEM Media Player, OBS Image Sources, or Companion dynamic button previews directly to `http://<server-ip>:5000/latest` with `Cache-Control: no-store`. Any generated image can also be pinned as `/latest` from the Web UI or API.
+- **Live Asset Serving (`/latest` & `/thumbnails/<file>`)**: Point ATEM Media Player, OBS Image Sources, or Companion dynamic button previews directly to `http://<server-ip>:5001/latest` with `Cache-Control: no-store`. Any generated image can also be pinned as `/latest` from the Web UI or API.
 - **Minimal Volunteer Web UI (`/ui` or `/`)**: Built-in browser interface for volunteers to trigger preset buttons, generate custom thumbnails, edit `miniaturas.csv` and run batch jobs, choose which image is `/latest`, and diagnose errors with a visual troubleshooting banner.
 - **Optional YouTube Livestream Sync (`/youtube/*`)**: Pregenerates the livestream title (`[title] - [subtitle]`), updates only the `Miniatura:` / `Thumbnail:` license line in the bottom `Licencias:` list of the description, and uploads `/latest` as the YouTube livestream thumbnail.
 - **Automatic YouTube Attributions**: Tracks Unsplash photographer credits in `attributions.txt` and exposes them via `GET /attributions`.
@@ -51,30 +51,30 @@ flowchart LR
 ## Repository Structure
 
 ```text
-automatic-thumbnail/
-├── app.py                        # Core Flask REST API service & Web UI server
-├── script.py                     # Rendering engine & CLI batch processor
-├── youtube_service.py            # Optional YouTube Data API v3 livestream sync
+thumbnail-companion-bridge/
+├── app.py                              # Core Flask REST API service & Web UI server
+├── script.py                           # Rendering engine & CLI batch processor
+├── youtube_service.py                  # Optional YouTube Data API v3 livestream sync
 ├── templates/
-│   └── index.html                # Minimal volunteer Web UI
-├── config.template.json          # Service & preset template configuration
-├── miniaturas.csv                # Sample batch CSV input
-├── assets/                       # Watermark & logo PNG assets
-├── segoe-ui-black.ttf            # Primary display font
-├── segoe-ui-bold.ttf             # Fallback bold font
-├── pyproject.toml                # PEP 621 package metadata & CLI entrypoints
-├── requirements.txt              # Python dependencies
-├── Dockerfile                    # Container image with HEALTHCHECK
-├── docker-compose.yml            # Container orchestration with persistent volumes
-├── .dockerignore                 # Build exclusion rules (secrets & outputs)
-├── install-lxc.sh                # One-command Proxmox / Debian LXC installer
-├── update.sh                     # Automated service updater (git pull + pip + restart)
-├── automatic-thumbnail.service   # Systemd service unit definition
-├── test_app.py                   # Automated test suite (API + rendering)
-├── start.sh                      # Linux startup wrapper
-├── start.bat                     # Windows startup script
-├── LICENSE                       # GNU GPLv3 License
-└── README.md                     # Documentation
+│   └── index.html                      # Minimal volunteer Web UI
+├── config.template.json                # Service & preset template configuration
+├── miniaturas.csv                      # Sample batch CSV input
+├── assets/                             # Watermark & logo PNG assets
+├── segoe-ui-black.ttf                  # Primary display font
+├── segoe-ui-bold.ttf                   # Fallback bold font
+├── pyproject.toml                      # PEP 621 package metadata & CLI entrypoints
+├── requirements.txt                    # Python dependencies
+├── Dockerfile                          # Container image with HEALTHCHECK
+├── docker-compose.yml                  # Container orchestration with persistent volumes
+├── .dockerignore                       # Build exclusion rules (secrets & outputs)
+├── install-lxc.sh                      # One-command Proxmox / Debian LXC installer
+├── update.sh                           # Automated service updater (git pull + pip + restart)
+├── thumbnail-companion-bridge.service  # Systemd service unit definition
+├── test_app.py                         # Automated test suite (API + rendering)
+├── start.sh                            # Linux startup wrapper
+├── start.bat                           # Windows startup script
+├── LICENSE                             # GNU GPLv3 License
+└── README.md                           # Documentation
 ```
 
 ---
@@ -89,7 +89,7 @@ automatic-thumbnail/
 2. Edit `config.json` with your website, optional Unsplash API key, optional YouTube OAuth paths, and livestreaming presets:
    ```json
    {
-     "port": 5000,
+     "port": 5001,
      "output_dir": "./thumbnails",
      "attributions_file": "./thumbnails/attributions.txt",
      "default_website": "sagunto.adventista.es",
@@ -115,7 +115,7 @@ automatic-thumbnail/
    }
    ```
 
-> Note: `config.json`, `.env`, `client_secrets.json`, and `youtube_token.json` are ignored by git to prevent leaking API keys or OAuth tokens. Environment variables (`PORT`, `OUTPUT_DIR`, `ATTRIBUTIONS_FILE`, `DEFAULT_WEBSITE`, `UNSPLASH_ACCESS_KEY`, `WATERMARK_FILE`, `LOGO_FILE`, `FONT_FILE`, `CONFIG_PATH`, `CSV_PATH`, `YOUTUBE_CLIENT_SECRETS`, `YOUTUBE_TOKEN_FILE`, `YOUTUBE_BROADCAST_ID`) override `config.json` values when set.
+> Note: `config.json`, `.env`, `client_secrets.json`, and `youtube_token.json` are ignored by git to prevent leaking API keys or OAuth tokens. Environment variables (`PORT`, `OUTPUT_DIR`, `ATTRIBUTIONS_FILE`, `DEFAULT_WEBSITE`, `UNSPLASH_ACCESS_KEY`, `WATERMARK_FILE`, `LOGO_FILE`, `FONT_FILE`, `CONFIG_PATH`, `CSV_PATH`, `YOUTUBE_CLIENT_SECRETS`, `YOUTUBE_TOKEN_FILE`, `YOUTUBE_BROADCAST_ID`, `YOUTUBE_REDIRECT_URI`, `OAUTHLIB_INSECURE_TRANSPORT`) override `config.json` values when set.
 
 ---
 
@@ -125,20 +125,20 @@ automatic-thumbnail/
 
 1. Clone or copy the repository inside your LXC container:
    ```bash
-   git clone <REPO_URL> /opt/automatic-thumbnail
-   cd /opt/automatic-thumbnail
+   git clone <REPO_URL> /opt/thumbnail-companion-bridge
+   cd /opt/thumbnail-companion-bridge
    ```
 
 2. Run the automated installer as root:
    ```bash
    sudo bash install-lxc.sh
    ```
-   *The installer provisions dependencies, creates the Python venv, enables `automatic-thumbnail.service`, and links the service to the standard LXC `update` command.*
+   *The installer provisions dependencies, creates the Python venv, enables `thumbnail-companion-bridge.service` (on port `5001` by default, or `port` in `config.json` / `PORT` env var, avoiding port `5000` collisions with `tuya-companion-bridge`), and non-destructively appends an update hook to `/usr/local/bin/update`.*
 
-3. Edit `/opt/automatic-thumbnail/config.json` if needed and restart:
+3. Edit `/opt/thumbnail-companion-bridge/config.json` if needed and restart:
    ```bash
-   nano /opt/automatic-thumbnail/config.json
-   systemctl restart automatic-thumbnail.service
+   nano /opt/thumbnail-companion-bridge/config.json
+   systemctl restart thumbnail-companion-bridge.service
    ```
 
 #### Updating the LXC Service
@@ -147,7 +147,7 @@ Run:
 ```bash
 update
 ```
-*(Or `/opt/automatic-thumbnail/update.sh`)* to pull the latest code, update Python dependencies, and restart `automatic-thumbnail.service`.
+*(Or `/opt/thumbnail-companion-bridge/update.sh`)* to pull the latest code, update Python dependencies, and restart `thumbnail-companion-bridge.service`.
 
 ---
 
@@ -155,13 +155,13 @@ update
 
 1. Start the container:
    ```bash
-   cd automatic-thumbnail
+   cd thumbnail-companion-bridge
    docker compose up -d --build
    ```
 
 2. Verify:
    ```bash
-   curl http://<server-ip>:5000/health
+   curl http://<server-ip>:5001/health
    ```
 
 ---
@@ -248,8 +248,9 @@ The test suite (14 tests) validates:
 | Action | Method | URL | Description |
 | :--- | :--- | :--- | :--- |
 | YouTube Status | GET | `/youtube/status` | Check OAuth libraries, `client_secrets.json`, and token status |
-| Start OAuth | GET | `/youtube/auth/start` | Generate Google OAuth authorization URL |
+| Start OAuth | GET | `/youtube/auth/start` | Generate Google OAuth authorization URL (`?redirect=1` to redirect immediately) |
 | OAuth Callback | GET | `/youtube/auth/callback` | Exchange OAuth code and save `youtube_token.json` |
+| Disconnect YouTube | POST / DELETE | `/youtube/disconnect` | Remove saved `youtube_token.json` to switch accounts |
 | List Broadcasts | GET | `/youtube/broadcasts` | List active and upcoming YouTube livestreams |
 | Preview Metadata | GET / POST | `/youtube/preview` | Preview `[title] - [subtitle]` and updated `Miniatura:` license |
 | Update Livestream | GET / POST | `/youtube/update` | Update broadcast title, bottom `Miniatura:` license, and `/latest` thumbnail |
@@ -258,7 +259,7 @@ The test suite (14 tests) validates:
 
 ## Web Interface (For Volunteers)
 
-Open `http://<server-ip>:5000/` (or `http://<server-ip>:5000/ui`) in any browser on the local network:
+Open `http://<server-ip>:5001/` (or `http://<server-ip>:5001/ui`) in any browser on the local network:
 
 1. **Active `/latest` Monitor**: Shows the image currently served at `/latest` for ATEM Media Player / OBS / YouTube, along with its title, subtitle, and photographer license.
 2. **Presets & Quick Generate**:
@@ -281,18 +282,26 @@ You can pregenerate and push the livestream **title**, **thumbnail license**, an
 
 1. **Create OAuth Credentials** in Google Cloud Console:
    - Enable **YouTube Data API v3**.
+   - Under **OAuth Consent Screen / Audience**: set **User Type = External** and publish the app (**In Production**) if the YouTube channel is outside a Google Workspace organization (this avoids `403 org_internal` and prevents 7-day refresh token expiration in Testing mode).
    - Create an **OAuth 2.0 Client ID** (Web application) with authorized redirect URI:
      ```text
-     http://<server-ip>:5000/youtube/auth/callback
+     https://<your-domain>.duckdns.org/youtube/auth/callback
      ```
+     and/or for local SSH-tunnel authorization:
+     ```text
+     http://localhost:5001/youtube/auth/callback
+     ```
+     *(Note: `OAUTHLIB_INSECURE_TRANSPORT=1` is enabled in `thumbnail-companion-bridge.service` and `start.sh` so `http://localhost` callbacks work over an SSH tunnel while outbound Google API calls remain HTTPS.)*
    - Download the JSON file and save it as `client_secrets.json` in the project directory (or set `YOUTUBE_CLIENT_SECRETS` / `youtube.client_secrets_file` in `config.json`).
-2. **Authorize Once**:
-   - Open the Web UI (`http://<server-ip>:5000/ui`), scroll to **YouTube Livestream Sync**, and click **Connect YouTube Account**.
+2. **Authorize & Select the YouTube Channel**:
+   - Open the Web UI (`http://<server-ip>:5001/ui` or `http://localhost:5001/ui` via SSH tunnel), scroll to **YouTube Livestream Sync**, and click **Connect YouTube Account**.
+   - **Important (Channel Selection)**: Authorize as the **channel-owning Google account** or a **Brand Account Owner/Manager**, and pick the target **YouTube channel** on Google's chooser screen. Authorizing a personal Google profile with no YouTube channel (or only YouTube Studio editor permissions) will fail API calls with `401 youtubeSignupRequired`, `403 liveStreamingNotEnabled`, or `403 forbidden`.
+   - To change accounts later, use **Reconnect / Switch Account** or **Disconnect** right in the Web UI.
 3. **How Updates Work**:
    - **Title**: Formatted as `[title] - [subtitle]` from the active `/latest` thumbnail.
    - **Description**: Reads the existing livestream description and **only** updates the `Miniatura:` (or `Thumbnail:`) line inside the `Licencias:` / `Licenses:` list at the bottom, leaving all other credits and links intact.
    - **Thumbnail**: Uploads the active `/latest` PNG to the selected (or auto-detected upcoming/active) livestream.
-   - **Companion Trigger**: You can also trigger this from a Bitfocus Companion button via `POST http://<server-ip>:5000/youtube/update`.
+   - **Companion Trigger**: You can also trigger this from a Bitfocus Companion button via `POST http://<server-ip>:5001/youtube/update`.
 
 ---
 
@@ -307,7 +316,7 @@ You can pregenerate and push the livestream **title**, **thumbnail license**, an
    - Under **Press Actions**, add **generic-http: HTTP POST** (or **HTTP GET**).
    - Set URL:
      ```text
-     http://$(custom:thumbnail_server_ip):5000/sabado/generate?async=true
+     http://$(custom:thumbnail_server_ip):5001/sabado/generate?async=true
      ```
 4. Press the button to trigger generation in the background.
 
@@ -318,8 +327,8 @@ You can pregenerate and push the livestream **title**, **thumbnail license**, an
    - `thumbnail_ready` (default `false`)
 
 2. **Create Periodic Polling Trigger** (Interval: `2000 ms`):
-   - Action 1: **generic-http: HTTP GET** ➔ `http://$(custom:thumbnail_server_ip):5000/is_busy` ➔ Store result as text in `custom:thumbnail_busy`.
-   - Action 2: **generic-http: HTTP GET** ➔ `http://$(custom:thumbnail_server_ip):5000/is_ready` ➔ Store result as text in `custom:thumbnail_ready`.
+   - Action 1: **generic-http: HTTP GET** ➔ `http://$(custom:thumbnail_server_ip):5001/is_busy` ➔ Store result as text in `custom:thumbnail_busy`.
+   - Action 2: **generic-http: HTTP GET** ➔ `http://$(custom:thumbnail_server_ip):5001/is_ready` ➔ Store result as text in `custom:thumbnail_ready`.
 
 3. **Add Button Feedbacks**:
    - When `custom:thumbnail_busy == true` ➔ Background **Amber/Yellow** (`#ffaa00`).
@@ -329,6 +338,6 @@ You can pregenerate and push the livestream **title**, **thumbnail license**, an
 
 Add a **Browser Source** or **Image Source** pointing to:
 ```text
-http://<server-ip>:5000/latest
+http://<server-ip>:5001/latest
 ```
 Every time a button in Companion generates a new thumbnail, `/latest` automatically serves the newest `1920x1080` PNG.

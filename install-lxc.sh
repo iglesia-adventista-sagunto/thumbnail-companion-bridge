@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-# Automatic Thumbnail - LXC Automated Installer & Update Linker
+# Thumbnail Companion Bridge - LXC Automated Installer & Update Linker
 # Compatible with Debian/Ubuntu LXCs (Proxmox VE / standalone LXC)
 
 if [ "$EUID" -ne 0 ]; then
@@ -9,11 +9,12 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-TARGET_DIR="/opt/automatic-thumbnail"
+SERVICE_NAME="thumbnail-companion-bridge.service"
+TARGET_DIR="/opt/thumbnail-companion-bridge"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 echo "=========================================================="
-echo " Installing Automatic Thumbnail Bridge in LXC"
+echo " Installing Thumbnail Companion Bridge in LXC"
 echo "=========================================================="
 
 # 1. Install prerequisites
@@ -54,24 +55,28 @@ if [ ! -f "config.json" ]; then
     echo "IMPORTANT: Remember to edit $TARGET_DIR/config.json with your Unsplash API key and presets."
 fi
 
-# 5. Install systemd service
-echo "4. Registering systemd service..."
-cp automatic-thumbnail.service /etc/systemd/system/
+# 5. Migrate legacy service name if present, then install systemd service
+echo "4. Registering systemd service ($SERVICE_NAME)..."
+if systemctl list-unit-files | grep -q "^automatic-thumbnail\.service"; then
+    echo "Disabling legacy automatic-thumbnail.service..."
+    systemctl disable --now automatic-thumbnail.service 2>/dev/null || true
+fi
+cp "$SERVICE_NAME" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now automatic-thumbnail.service
+systemctl enable --now "$SERVICE_NAME"
 
-# 6. Link to standard LXC 'update' command
+# 6. Non-destructively link to standard LXC 'update' command
 echo "5. Linking to LXC 'update' command..."
 UPDATE_BIN="/usr/local/bin/update"
 HOOK_SNIPPET="
-# === Automatic Thumbnail Update Hook ===
-if [ -f /opt/automatic-thumbnail/update.sh ]; then
-    bash /opt/automatic-thumbnail/update.sh
+# === Thumbnail Companion Bridge Update Hook ===
+if [ -f /opt/thumbnail-companion-bridge/update.sh ]; then
+    bash /opt/thumbnail-companion-bridge/update.sh
 fi
 "
 
 if [ -f "$UPDATE_BIN" ]; then
-    if ! grep -q "automatic-thumbnail" "$UPDATE_BIN"; then
+    if ! grep -q "thumbnail-companion-bridge" "$UPDATE_BIN"; then
         echo "Appending update hook to existing $UPDATE_BIN..."
         echo "$HOOK_SNIPPET" >> "$UPDATE_BIN"
     else
@@ -85,9 +90,9 @@ set -e
 echo "=== System Update (APT) ==="
 apt-get update && apt-get upgrade -y
 
-# === Automatic Thumbnail Update Hook ===
-if [ -f /opt/automatic-thumbnail/update.sh ]; then
-    bash /opt/automatic-thumbnail/update.sh
+# === Thumbnail Companion Bridge Update Hook ===
+if [ -f /opt/thumbnail-companion-bridge/update.sh ]; then
+    bash /opt/thumbnail-companion-bridge/update.sh
 fi
 EOF
     chmod +x "$UPDATE_BIN"
@@ -96,10 +101,10 @@ fi
 echo "=========================================================="
 echo " Installation Complete!"
 echo " Service Status:"
-systemctl --no-pager status automatic-thumbnail.service
+systemctl --no-pager status "$SERVICE_NAME"
 echo ""
 echo " You can update the service at any time by running:"
 echo "   update"
 echo " or:"
-echo "   /opt/automatic-thumbnail/update.sh"
+echo "   /opt/thumbnail-companion-bridge/update.sh"
 echo "=========================================================="

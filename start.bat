@@ -8,5 +8,5 @@ if not exist "venv" (
     call venv\Scripts\pip.exe install -r requirements.txt
 )
 
-echo Starting Automatic Thumbnail Bridge on http://0.0.0.0:5000...
+echo Starting Thumbnail Companion Bridge (port from config.json / PORT env, default 5001)...
 call venv\Scripts\python.exe app.py

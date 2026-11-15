@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
-INSTALL_DIR="${INSTALL_DIR:-/opt/automatic-thumbnail}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/thumbnail-companion-bridge}"
+SERVICE_NAME="thumbnail-companion-bridge.service"
 
 echo "=========================================="
-echo " Updating Automatic Thumbnail Service"
+echo " Updating Thumbnail Companion Bridge"
 echo "=========================================="
 
 if [ -d "$INSTALL_DIR" ]; then
@@ -36,16 +37,21 @@ if [ -d "venv" ]; then
 fi
 
 # 3. Restart systemd service if installed
-if systemctl list-unit-files | grep -q "automatic-thumbnail.service"; then
-    echo "Restarting automatic-thumbnail.service..."
+if systemctl list-unit-files | grep -q "^${SERVICE_NAME}"; then
+    echo "Restarting ${SERVICE_NAME}..."
+    systemctl daemon-reload
+    systemctl restart "${SERVICE_NAME}"
+    echo "Service status:"
+    systemctl --no-pager status "${SERVICE_NAME}"
+elif systemctl list-unit-files | grep -q "^automatic-thumbnail\.service"; then
+    echo "Restarting legacy automatic-thumbnail.service..."
     systemctl daemon-reload
     systemctl restart automatic-thumbnail.service
-    echo "Service status:"
     systemctl --no-pager status automatic-thumbnail.service
 else
-    echo "Notice: automatic-thumbnail.service not installed in systemd."
+    echo "Notice: ${SERVICE_NAME} not installed in systemd."
 fi
 
 echo "=========================================="
-echo " Automatic Thumbnail update complete!"
+echo " Thumbnail Companion Bridge update complete!"
 echo "=========================================="

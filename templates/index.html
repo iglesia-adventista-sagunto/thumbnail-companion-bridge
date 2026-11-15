@@ -489,9 +489,10 @@
           <span id="ytStatusBadge" class="badge warn">Checking...</span>
         </div>
 
-        <div id="ytAuthRow" class="hidden" style="margin-bottom:10px;">
-          <button class="btn-secondary btn-sm" onclick="connectYouTube()">Connect YouTube Account</button>
-          <span id="ytAuthHint" class="muted" style="margin-left:8px;"></span>
+        <div id="ytAuthRow" class="hidden" style="margin-bottom:10px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+          <a id="ytConnectBtn" class="btn btn-secondary btn-sm" href="/youtube/auth/start?redirect=1" target="_blank">Connect YouTube Account</a>
+          <button id="ytDisconnectBtn" class="btn-danger btn-sm hidden" onclick="disconnectYouTube()">Disconnect</button>
+          <span id="ytAuthHint" class="muted"></span>
         </div>
 
         <div class="form-grid">
@@ -900,30 +901,56 @@
         const st = await api("/youtube/status");
         const badge = document.getElementById("ytStatusBadge");
         const authRow = document.getElementById("ytAuthRow");
+        const connectBtn = document.getElementById("ytConnectBtn");
+        const disconnectBtn = document.getElementById("ytDisconnectBtn");
         const hint = document.getElementById("ytAuthHint");
 
         if (!st.libs_available) {
           badge.textContent = "Libs Missing";
           badge.className = "badge warn";
           authRow.classList.remove("hidden");
+          connectBtn.classList.add("hidden");
+          disconnectBtn.classList.add("hidden");
           hint.textContent = "Install google-api-python-client & google-auth-oauthlib.";
         } else if (!st.client_secrets_exists) {
           badge.textContent = "No client_secrets.json";
           badge.className = "badge warn";
           authRow.classList.remove("hidden");
+          connectBtn.classList.add("hidden");
+          disconnectBtn.classList.add("hidden");
           hint.textContent = "Place client_secrets.json in app directory to enable OAuth.";
         } else if (!st.authenticated) {
           badge.textContent = "Not Connected";
           badge.className = "badge warn";
           authRow.classList.remove("hidden");
+          connectBtn.classList.remove("hidden");
+          connectBtn.textContent = "Connect YouTube Account";
+          disconnectBtn.classList.add("hidden");
           hint.textContent = "Click to authorize YouTube channel.";
         } else {
           badge.textContent = "Connected";
           badge.className = "badge";
-          authRow.classList.add("hidden");
+          authRow.classList.remove("hidden");
+          connectBtn.classList.remove("hidden");
+          connectBtn.textContent = "Reconnect / Switch Account";
+          disconnectBtn.classList.remove("hidden");
+          hint.textContent = "Authorized. Switch channel or disconnect if needed.";
           await loadBroadcasts();
         }
       } catch (e) {}
+    }
+
+    async function disconnectYouTube() {
+      if (!confirm("Disconnect YouTube account and remove saved token?")) return;
+      clearError();
+      try {
+        await api("/youtube/disconnect", { method: "POST" }, "Disconnect YouTube");
+        document.getElementById("ytBroadcastSelect").innerHTML = '<option value="">-- Auto-detect active / upcoming --</option>';
+        toast("YouTube account disconnected.");
+        await loadYouTubeStatus();
+      } catch (err) {
+        // Error banner already shown
+      }
     }
 
     async function loadBroadcasts() {
