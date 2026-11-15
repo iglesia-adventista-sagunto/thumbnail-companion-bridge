@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Proxmox LXC & Bitfocus Companion compatible REST HTTP service for automated livestreaming thumbnail generation"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "GPL-3.0-or-later" }
 keywords = ["thumbnail", "bitfocus-companion", "livestreaming", "obs", "proxmox", "rest-api"]
 authors = [
     { name = "Automatic Thumbnail Maintainers" }
@@ -17,7 +17,7 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Framework :: Flask",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",

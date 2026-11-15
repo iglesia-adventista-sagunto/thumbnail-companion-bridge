@@ -4,7 +4,7 @@
 [![Proxmox LXC](https://img.shields.io/badge/Proxmox-LXC%20Appliance-E57000.svg?style=flat-square&logo=proxmox&logoColor=white)](https://www.proxmox.com)
 [![Docker](https://img.shields.io/badge/Docker-Container%20Ready-2496ED.svg?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com)
 [![Systemd](https://img.shields.io/badge/Systemd-Managed%20Service-CC0000.svg?style=flat-square&logo=linux&logoColor=white)](https://systemd.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-success.svg?style=flat-square)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat-square)](LICENSE)
 
 REST HTTP service and CLI tool to generate branded `1920x1080` livestreaming thumbnails on demand from **Bitfocus Companion**, **Stream Deck**, **OBS**, or automated batch tasks — designed to run natively in a **Proxmox LXC**, **Docker**, or **Windows**.
 
@@ -65,7 +65,7 @@ automatic-thumbnail/
 ├── test_app.py                   # Automated test suite (API + rendering)
 ├── start.sh                      # Linux startup wrapper
 ├── start.bat                     # Windows startup script
-├── LICENSE                       # MIT License
+├── LICENSE                       # GNU GPLv3 License
 └── README.md                     # Documentation
 ```
 
