@@ -60,6 +60,30 @@
     }
     .badge.busy { background: #78350f; color: #fde68a; }
     .badge.warn { background: #7c2d12; color: #fed7aa; }
+    .badge.err { background: #7f1d1d; color: #fecaca; }
+    .error-banner {
+      max-width: 1440px;
+      margin: 14px auto 0;
+      padding: 14px 18px;
+      background: #450a0a;
+      border: 1px solid #dc2626;
+      border-radius: var(--radius);
+      color: #fee2e2;
+      font-size: 0.9rem;
+    }
+    .error-banner-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .error-banner code {
+      background: rgba(0, 0, 0, 0.35);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+    }
     .header-actions {
       display: flex;
       align-items: center;
@@ -312,6 +336,7 @@
   <header>
     <div class="brand">
       <span>Automatic Thumbnail Bridge</span>
+      <span id="connBadge" class="badge">Connecting...</span>
       <span id="statusBadge" class="badge">Ready</span>
     </div>
     <div class="header-actions">
@@ -319,6 +344,17 @@
       <button class="btn-secondary btn-sm" onclick="refreshAll()">Refresh</button>
     </div>
   </header>
+
+  <div id="errorBanner" class="error-banner hidden">
+    <div class="error-banner-head">
+      <strong id="errTitle">Action Failed</strong>
+      <div style="display:flex;gap:6px;">
+        <button class="btn-secondary btn-sm" onclick="testConnection()">Test Connection</button>
+        <button class="btn-danger btn-sm" onclick="clearError()">Dismiss</button>
+      </div>
+    </div>
+    <div id="errDetails"></div>
+  </div>
 
   <main>
     <!-- LEFT COLUMN -->
@@ -504,20 +540,123 @@
       setTimeout(() => el.classList.remove("show"), 3500);
     }
 
-    async function api(url, opts = {}) {
-      const res = await fetch(url, opts);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    function clearError() {
+      document.getElementById("errorBanner").classList.add("hidden");
+    }
+
+    function showError(action, endpoint, err) {
+      const banner = document.getElementById("errorBanner");
+      const titleEl = document.getElementById("errTitle");
+      const detailsEl = document.getElementById("errDetails");
+
+      const msg = (err && err.message) ? err.message : String(err || "Unknown error");
+      const timeStr = new Date().toLocaleTimeString();
+      let hint = "";
+
+      if (window.location.protocol === "file:") {
+        hint = "You opened this HTML file directly from disk (file://). Open it from the running server instead, e.g. http://localhost:5000/ui";
+      } else if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+        hint = `Browser could not reach ${window.location.origin}${endpoint}. Check that the Thumbnail Bridge service is running, not restarting, and reachable on the network.`;
+      }
+
+      titleEl.textContent = `Failed: ${action} (${timeStr})`;
+      detailsEl.innerHTML = `
+        <div><strong>Endpoint:</strong> <code>${escapeHtml(endpoint)}</code></div>
+        <div style="margin-top:4px;"><strong>Error:</strong> ${escapeHtml(msg)}</div>
+        ${hint ? `<div style="margin-top:6px;color:#fde68a;"><strong>Troubleshooting Tip:</strong> ${escapeHtml(hint)}</div>` : ""}
+      `;
+      banner.classList.remove("hidden");
+      toast(`${action} failed: ${msg}`, true);
+    }
+
+    async function testConnection() {
+      const conn = document.getElementById("connBadge");
+      try {
+        const h = await api("/health", {}, "Health Check");
+        conn.textContent = `Online (v${h.version})`;
+        conn.className = "badge";
+        clearError();
+        toast(`Server online! Unsplash: ${h.unsplash_configured ? "API Key" : "Curated"}, Font: ${h.font_loaded ? "OK" : "Fallback"}`);
+      } catch (err) {
+        conn.textContent = "Offline";
+        conn.className = "badge err";
+      }
+    }
+
+    async function api(url, opts = {}, actionLabel = "") {
+      const method = (opts.method || "GET").toUpperCase();
+      const endpoint = `${method} ${url}`;
+      let res;
+      try {
+        res = await fetch(url, opts);
+      } catch (networkErr) {
+        if (actionLabel) showError(actionLabel, url, networkErr);
+        throw networkErr;
+      }
+
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (_) {
+        data = { error: text ? text.slice(0, 200) : `Non-JSON response (HTTP ${res.status})` };
+      }
+
+      if (!res.ok) {
+        const err = new Error(data.error || `HTTP ${res.status} ${res.statusText}`);
+        if (actionLabel) showError(actionLabel, url, err);
+        throw err;
+      }
       return data;
     }
 
+    async function waitForJob(actionLabel, endpoint) {
+      const badge = document.getElementById("statusBadge");
+      badge.textContent = "Generating...";
+      badge.className = "badge busy";
+
+      for (let i = 0; i < 240; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        const s = await api("/status", {}, actionLabel);
+        if (!s.busy) {
+          if (s.state === "error" && s.last_error) {
+            const err = new Error(s.last_error);
+            showError(actionLabel, endpoint, err);
+            throw err;
+          }
+          badge.textContent = "Ready";
+          badge.className = "badge";
+          return s;
+        }
+      }
+      const timeoutErr = new Error("Generation timed out after 120 seconds.");
+      showError(actionLabel, endpoint, timeoutErr);
+      throw timeoutErr;
+    }
+
     async function loadStatus() {
+      const conn = document.getElementById("connBadge");
+      const badge = document.getElementById("statusBadge");
       try {
-        const s = await api("/status");
-        const badge = document.getElementById("statusBadge");
-        badge.textContent = s.busy ? "Generating..." : "Ready";
-        badge.className = s.busy ? "badge busy" : "badge";
-      } catch (e) {}
+        const [h, s] = await Promise.all([api("/health"), api("/status")]);
+        conn.textContent = `Online (v${h.version})`;
+        conn.className = "badge";
+        if (s.busy) {
+          badge.textContent = "Generating...";
+          badge.className = "badge busy";
+        } else if (s.state === "error" && s.last_error) {
+          badge.textContent = "Last Job Error";
+          badge.className = "badge err";
+        } else {
+          badge.textContent = "Ready";
+          badge.className = "badge";
+        }
+      } catch (e) {
+        conn.textContent = "Offline";
+        conn.className = "badge err";
+        badge.textContent = "Unreachable";
+        badge.className = "badge err";
+      }
     }
 
     async function loadLatest() {
@@ -609,18 +748,26 @@
     }
 
     async function runPreset(name) {
+      const endpoint = `/${encodeURIComponent(name)}/generate`;
+      clearError();
       try {
         toast(`Generating '${name}'...`);
-        await api(`/${encodeURIComponent(name)}/generate`, { method: "POST" });
+        await api(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ async: true }),
+        }, `Generate preset '${name}'`);
+        await waitForJob(`Generate preset '${name}'`, endpoint);
         toast(`Preset '${name}' generated!`);
         await refreshThumbnailsAndYouTube();
       } catch (err) {
-        toast(err.message, true);
+        // Error banner already shown by api()/waitForJob()
       }
     }
 
     async function generateCustom(e) {
       e.preventDefault();
+      clearError();
       try {
         toast("Generating thumbnail...");
         await api("/generate", {
@@ -632,12 +779,14 @@
             query: document.getElementById("gQuery").value,
             filename: document.getElementById("gFilename").value || undefined,
             variations: parseInt(document.getElementById("gVariations").value || "1", 10),
+            async: true,
           }),
-        });
+        }, "Custom Generate");
+        await waitForJob("Custom Generate", "/generate");
         toast("Thumbnail generated!");
         await refreshThumbnailsAndYouTube();
       } catch (err) {
-        toast(err.message, true);
+        // Error banner already shown by api()/waitForJob()
       }
     }
 
@@ -726,17 +875,23 @@
     }
 
     async function saveCsv(runBatch) {
+      clearError();
       try {
         if (runBatch) toast("Saving CSV and running batch...");
-        const res = await api("/csv", {
+        await api("/csv", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows: csvRows, run: runBatch }),
-        });
-        toast(runBatch ? `Batch done: ${(res.files || []).length} image(s) generated` : "CSV saved!");
-        if (runBatch) await refreshThumbnailsAndYouTube();
+          body: JSON.stringify({ rows: csvRows, run: runBatch, async: runBatch }),
+        }, runBatch ? "Save & Run Batch CSV" : "Save CSV");
+        if (runBatch) {
+          const st = await waitForJob("Batch CSV", "/csv");
+          toast(`Batch done: ${(st.last_files || []).length} image(s) generated`);
+          await refreshThumbnailsAndYouTube();
+        } else {
+          toast("CSV saved!");
+        }
       } catch (err) {
-        toast(err.message, true);
+        // Error banner already shown
       }
     }
 

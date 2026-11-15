@@ -546,6 +546,65 @@ def generate_preset_endpoint(preset_name):
     return _handle_generate(preset=preset)
 
 
+def _run_batch_job(csv_path, csv_content=None):
+    temp_path = None
+    target_csv = csv_path
+    try:
+        if csv_content:
+            fd, temp_path = tempfile.mkstemp(suffix=".csv", prefix="batch_")
+            with os.fdopen(fd, "w", encoding="utf-8") as tmp:
+                tmp.write(csv_content)
+            target_csv = temp_path
+
+        with state_lock:
+            job_state["state"] = "generating"
+            job_state["busy"] = True
+            job_state["last_error"] = None
+
+        with render_lock:
+            res = engine.batch_process(
+                csv_path=target_csv,
+                output_dir=cfg["output_dir"],
+                attributions_file=cfg["attributions_file"],
+                site_url=cfg["default_website"],
+                unsplash_access_key=cfg["unsplash_access_key"],
+                watermark_file=cfg["watermark_file"],
+                logo_file=cfg["logo_file"],
+                font_file=cfg["font_file"],
+            )
+
+        if "error" in res:
+            with state_lock:
+                job_state["state"] = "error"
+                job_state["busy"] = False
+                job_state["last_error"] = res["error"]
+            return res
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        last_file = res["files"][-1] if res["files"] else None
+        if res.get("file_metadata"):
+            _record_thumbnails_metadata(res["file_metadata"], pinned_filename=last_file)
+
+        with state_lock:
+            job_state["state"] = "ready"
+            job_state["busy"] = False
+            job_state["last_generated_at"] = now_iso
+            job_state["last_files"] = res["files"]
+            job_state["last_file"] = last_file
+            job_state["total_generated"] += len(res["files"])
+        return res
+    except Exception as e:
+        logger.exception("Batch processing failed: %s", e)
+        with state_lock:
+            job_state["state"] = "error"
+            job_state["busy"] = False
+            job_state["last_error"] = str(e)
+        return {"error": str(e), "files": [], "rows_processed": 0}
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
 @app.route("/batch", methods=["GET", "POST"])
 def batch_endpoint():
     params = _extract_params()
@@ -553,62 +612,11 @@ def batch_endpoint():
     csv_path = params.get("csv_path") or cfg["csv_path"]
     is_async = _parse_bool(params.get("async"), default=False)
 
-    def _run_batch():
-        temp_path = None
-        target_csv = csv_path
-        try:
-            if csv_content:
-                fd, temp_path = tempfile.mkstemp(suffix=".csv", prefix="batch_")
-                with os.fdopen(fd, "w", encoding="utf-8") as tmp:
-                    tmp.write(csv_content)
-                target_csv = temp_path
-
-            with state_lock:
-                job_state["state"] = "generating"
-                job_state["busy"] = True
-                job_state["last_error"] = None
-
-            with render_lock:
-                res = engine.batch_process(
-                    csv_path=target_csv,
-                    output_dir=cfg["output_dir"],
-                    attributions_file=cfg["attributions_file"],
-                    site_url=cfg["default_website"],
-                    unsplash_access_key=cfg["unsplash_access_key"],
-                    watermark_file=cfg["watermark_file"],
-                    logo_file=cfg["logo_file"],
-                    font_file=cfg["font_file"],
-                )
-
-            if "error" in res:
-                with state_lock:
-                    job_state["state"] = "error"
-                    job_state["busy"] = False
-                    job_state["last_error"] = res["error"]
-                return res
-
-            now_iso = datetime.now(timezone.utc).isoformat()
-            last_file = res["files"][-1] if res["files"] else None
-            if res.get("file_metadata"):
-                _record_thumbnails_metadata(res["file_metadata"], pinned_filename=last_file)
-
-            with state_lock:
-                job_state["state"] = "ready"
-                job_state["busy"] = False
-                job_state["last_generated_at"] = now_iso
-                job_state["last_files"] = res["files"]
-                job_state["last_file"] = last_file
-                job_state["total_generated"] += len(res["files"])
-            return res
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                os.remove(temp_path)
-
     if is_async:
-        threading.Thread(target=_run_batch, daemon=True).start()
+        threading.Thread(target=_run_batch_job, args=(csv_path, csv_content), daemon=True).start()
         return jsonify({"status": "accepted", "state": "generating"}), 202
 
-    res = _run_batch()
+    res = _run_batch_job(csv_path, csv_content)
     if "error" in res:
         return jsonify(res), 404
     return jsonify({
@@ -764,31 +772,14 @@ def save_csv():
         return jsonify({"error": "Provide either 'rows' (list) or 'raw'/'csv_content' (string)"}), 400
 
     run_now = _parse_bool(params.get("run"), default=False)
+    is_async = _parse_bool(params.get("async"), default=False)
     if run_now:
-        with render_lock:
-            res = engine.batch_process(
-                csv_path=csv_path,
-                output_dir=cfg["output_dir"],
-                attributions_file=cfg["attributions_file"],
-                site_url=cfg["default_website"],
-                unsplash_access_key=cfg["unsplash_access_key"],
-                watermark_file=cfg["watermark_file"],
-                logo_file=cfg["logo_file"],
-                font_file=cfg["font_file"],
-            )
+        if is_async:
+            threading.Thread(target=_run_batch_job, args=(csv_path, None), daemon=True).start()
+            return jsonify({"status": "accepted", "state": "generating"}), 202
+        res = _run_batch_job(csv_path, None)
         if "error" in res:
             return jsonify(res), 400
-        now_iso = datetime.now(timezone.utc).isoformat()
-        last_file = res["files"][-1] if res["files"] else None
-        if res.get("file_metadata"):
-            _record_thumbnails_metadata(res["file_metadata"], pinned_filename=last_file)
-        with state_lock:
-            job_state["state"] = "ready"
-            job_state["busy"] = False
-            job_state["last_generated_at"] = now_iso
-            job_state["last_files"] = res["files"]
-            job_state["last_file"] = last_file
-            job_state["total_generated"] += len(res["files"])
         return jsonify({"status": "saved_and_generated", "rows_processed": res["rows_processed"], "files": res["files"]}), 200
 
     return jsonify({"status": "saved", "path": csv_path}), 200
@@ -926,6 +917,11 @@ def reload_config():
     cfg = load_config()
     os.makedirs(cfg["output_dir"], exist_ok=True)
     return jsonify({"status": "reloaded", "presets_count": len(cfg["presets"])}), 200
+
+
+@app.errorhandler(500)
+def handle_internal_error(err):
+    return jsonify({"error": f"Internal server error: {err}"}), 500
 
 
 def main():

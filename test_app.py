@@ -265,6 +265,14 @@ class TestAutomaticThumbnailBridge(unittest.TestCase):
         self.assertEqual(len(get_data["rows"]), 1)
         self.assertEqual(get_data["rows"][0]["Title"], "Reunión General")
 
+        res_async = self.client.post("/csv", json={"rows": rows, "run": True, "async": True})
+        self.assertEqual(res_async.status_code, 202)
+        for _ in range(30):
+            if self.client.get("/is_busy").data.decode().strip() == "false":
+                break
+            time.sleep(0.05)
+        self.assertEqual(self.client.get("/is_ready").data.decode().strip(), "true")
+
     def test_14_youtube_formatting_and_preview(self):
         """YouTube helpers format '[title] - [subtitle]' and update only miniatura license."""
         self.assertEqual(format_livestream_title("Culto", "Sábado"), "Culto - Sábado")
