@@ -8,6 +8,7 @@ import threading
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import script as engine
 from youtube_service import (
@@ -95,6 +96,9 @@ def load_config():
     youtube_default_broadcast_id = (
         os.environ.get("YOUTUBE_BROADCAST_ID") or yt_cfg.get("default_broadcast_id") or ""
     ).strip()
+    youtube_redirect_uri = (
+        os.environ.get("YOUTUBE_REDIRECT_URI") or yt_cfg.get("redirect_uri") or ""
+    ).strip()
 
     presets = {}
     for item in data.get("presets", []):
@@ -124,6 +128,7 @@ def load_config():
             "client_secrets_file": youtube_client_secrets,
             "token_file": youtube_token_file,
             "default_broadcast_id": youtube_default_broadcast_id,
+            "redirect_uri": youtube_redirect_uri,
         },
         "presets": presets,
     }
@@ -154,6 +159,7 @@ yt_service = YouTubeService(
 )
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
 
 def resolve_preset(name):
@@ -794,7 +800,10 @@ def youtube_status():
 
 @app.route("/youtube/auth/start", methods=["GET"])
 def youtube_auth_start():
-    redirect_uri = request.url_root.rstrip("/") + "/youtube/auth/callback"
+    redirect_uri = (
+        cfg["youtube"].get("redirect_uri")
+        or (request.url_root.rstrip("/") + "/youtube/auth/callback")
+    )
     try:
         auth_url, state = yt_service.start_auth(redirect_uri)
     except FileNotFoundError as e:
