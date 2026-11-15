@@ -8,7 +8,7 @@ User=root
 WorkingDirectory=/opt/thumbnail-companion-bridge
 Environment=PYTHONUNBUFFERED=1
 Environment=OAUTHLIB_INSECURE_TRANSPORT=1
-ExecStart=/opt/thumbnail-companion-bridge/start.sh
+ExecStart=/bin/bash /opt/thumbnail-companion-bridge/start.sh
 Restart=always
 RestartSec=5
 

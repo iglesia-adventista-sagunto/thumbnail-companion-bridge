@@ -27,6 +27,8 @@ else
     echo "Notice: $INSTALL_DIR is not a git repo. Skipping git pull."
 fi
 
+chmod +x start.sh update.sh install-lxc.sh 2>/dev/null || true
+
 # 2. Update Python dependencies in virtualenv
 if [ -d "venv" ]; then
     echo "Updating Python virtual environment dependencies..."
@@ -38,7 +40,8 @@ fi
 
 # 3. Restart systemd service if installed
 if systemctl list-unit-files | grep -q "^${SERVICE_NAME}"; then
-    echo "Restarting ${SERVICE_NAME}..."
+    echo "Updating unit file and restarting ${SERVICE_NAME}..."
+    cp -f "${SERVICE_NAME}" /etc/systemd/system/ 2>/dev/null || true
     systemctl daemon-reload
     systemctl restart "${SERVICE_NAME}"
     echo "Service status:"
