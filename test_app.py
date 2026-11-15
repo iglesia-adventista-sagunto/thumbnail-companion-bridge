@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -9,12 +10,17 @@ from PIL import Image
 
 # Isolate test outputs in a temporary directory before importing app
 _TEMP_DIR = tempfile.TemporaryDirectory(prefix="thumb_test_", ignore_cleanup_errors=True)
+_TEMP_CONFIG = os.path.join(_TEMP_DIR.name, "config.json")
+shutil.copyfile(os.path.join(os.path.dirname(__file__), "config.template.json"), _TEMP_CONFIG)
+
 os.environ["OUTPUT_DIR"] = _TEMP_DIR.name
 os.environ["ATTRIBUTIONS_FILE"] = os.path.join(_TEMP_DIR.name, "attributions.txt")
-os.environ["CONFIG_PATH"] = os.path.join(os.path.dirname(__file__), "config.template.json")
+os.environ["CONFIG_PATH"] = _TEMP_CONFIG
+os.environ["CSV_PATH"] = os.path.join(_TEMP_DIR.name, "miniaturas.csv")
 
 import app as bridge_app  # noqa: E402
 import script as engine  # noqa: E402
+from youtube_service import format_livestream_title, update_description_thumbnail_license  # noqa: E402
 
 
 def _fake_variations(keyword_or_url, count=1, access_key=None):
@@ -174,6 +180,132 @@ class TestAutomaticThumbnailBridge(unittest.TestCase):
         self.assertEqual(self.client.post("/generate", json={}).status_code, 400)
         self.assertEqual(self.client.get("/nonexistent_preset/generate").status_code, 404)
         self.assertEqual(self.client.get("/generate?title=Hi&variations=abc").status_code, 400)
+
+    def test_10_web_ui_endpoint(self):
+        """GET /ui and GET / with Accept: text/html serve the minimal Web UI."""
+        res_ui = self.client.get("/ui")
+        self.assertEqual(res_ui.status_code, 200)
+        self.assertIn(b"Automatic Thumbnail Bridge", res_ui.data)
+
+        res_html = self.client.get("/", headers={"Accept": "text/html"})
+        self.assertEqual(res_html.status_code, 200)
+        self.assertIn(b"Automatic Thumbnail Bridge", res_html.data)
+
+        res_json = self.client.get("/", headers={"Accept": "application/json"})
+        self.assertEqual(res_json.status_code, 200)
+        self.assertEqual(json.loads(res_json.data)["status"], "healthy")
+
+    def test_11_pin_latest_selection(self):
+        """POST /latest pins a chosen image as the active /latest."""
+        self.client.post("/generate", json={"title": "Primero", "filename": "pin_a"})
+        self.client.post("/generate", json={"title": "Segundo", "filename": "pin_b"})
+
+        res_pin = self.client.post("/latest", json={"filename": "pin_a.png"})
+        self.assertEqual(res_pin.status_code, 200)
+        data = json.loads(res_pin.data)
+        self.assertEqual(data["latest"], "pin_a.png")
+        self.assertTrue(data["pinned"])
+
+        res_json = self.client.get("/latest?format=json")
+        latest = json.loads(res_json.data)
+        self.assertEqual(latest["filename"], "pin_a.png")
+        self.assertEqual(latest["title"], "Primero")
+
+        thumbs = json.loads(self.client.get("/thumbnails").data)["thumbnails"]
+        flagged = [t["filename"] for t in thumbs if t["is_latest"]]
+        self.assertEqual(flagged, ["pin_a.png"])
+
+    def test_12_presets_crud(self):
+        """POST /presets and DELETE /presets/<name> manage presets and persist config."""
+        res_add = self.client.post(
+            "/presets",
+            json={
+                "name": "jovenes",
+                "title": "Culto de Jóvenes",
+                "subtitle": "Viernes Noche",
+                "query": "iglesia",
+                "filename": "miniatura_jovenes",
+                "variations": 1,
+            },
+        )
+        self.assertEqual(res_add.status_code, 200)
+
+        presets = json.loads(self.client.get("/presets").data)["presets"]
+        self.assertTrue(any(p["name"] == "jovenes" for p in presets))
+
+        res_gen = self.client.get("/jovenes/generate")
+        self.assertEqual(res_gen.status_code, 200)
+        self.assertEqual(json.loads(res_gen.data)["files"], ["miniatura_jovenes.png"])
+
+        res_del = self.client.delete("/presets/jovenes")
+        self.assertEqual(res_del.status_code, 200)
+        presets_after = json.loads(self.client.get("/presets").data)["presets"]
+        self.assertFalse(any(p["name"] == "jovenes" for p in presets_after))
+
+    def test_13_csv_crud_and_run(self):
+        """GET/POST /csv reads, writes, and optionally executes batch generation."""
+        rows = [
+            {
+                "Filename": "csv_test_1",
+                "Title": "Reunión General",
+                "Subtitle": "Domingo",
+                "Unsplash_Keyword_or_URL": "iglesia",
+                "Variations": "1",
+            }
+        ]
+        res_save = self.client.post("/csv", json={"rows": rows, "run": True})
+        self.assertEqual(res_save.status_code, 200)
+        save_data = json.loads(res_save.data)
+        self.assertEqual(save_data["status"], "saved_and_generated")
+        self.assertEqual(save_data["files"], ["csv_test_1.png"])
+
+        res_get = self.client.get("/csv")
+        self.assertEqual(res_get.status_code, 200)
+        get_data = json.loads(res_get.data)
+        self.assertEqual(len(get_data["rows"]), 1)
+        self.assertEqual(get_data["rows"][0]["Title"], "Reunión General")
+
+    def test_14_youtube_formatting_and_preview(self):
+        """YouTube helpers format '[title] - [subtitle]' and update only miniatura license."""
+        self.assertEqual(format_livestream_title("Culto", "Sábado"), "Culto - Sábado")
+        self.assertEqual(format_livestream_title("Culto", ""), "Culto")
+
+        desc = (
+            "Bienvenidos al culto.\n\n"
+            "Licencias:\n"
+            "Música: Epidemic Sound\n"
+            "Miniatura: Old Photo License\n"
+            "Video: Propio"
+        )
+        updated = update_description_thumbnail_license(desc, "Photo by New Author on Unsplash")
+        self.assertIn("Música: Epidemic Sound", updated)
+        self.assertIn("Video: Propio", updated)
+        self.assertIn("Miniatura: Photo by New Author on Unsplash", updated)
+        self.assertNotIn("Old Photo License", updated)
+
+        # Preview endpoint uses /latest metadata
+        self.client.post("/generate", json={"title": "Sermón", "subtitle": "En Vivo", "filename": "yt_latest"})
+        res_prev = self.client.post("/youtube/preview", json={"description": desc})
+        self.assertEqual(res_prev.status_code, 200)
+        prev = json.loads(res_prev.data)
+        self.assertEqual(prev["latest_file"], "yt_latest.png")
+        self.assertEqual(prev["title"], "Sermón - En Vivo")
+        self.assertIn("Miniatura: Photo by Test Photographer", prev["description"])
+        self.assertIn("Música: Epidemic Sound", prev["description"])
+
+        # Update endpoint calls YouTubeService.update_livestream with /latest path
+        with patch.object(
+            bridge_app.yt_service,
+            "update_livestream",
+            return_value={"status": "ok", "broadcast_id": "abc123", "title": "Sermón - En Vivo", "thumbnail_updated": True},
+        ) as mock_yt:
+            res_upd = self.client.post("/youtube/update", json={"broadcast_id": "abc123"})
+            self.assertEqual(res_upd.status_code, 200)
+            mock_yt.assert_called_once()
+            _, kwargs = mock_yt.call_args
+            self.assertEqual(kwargs["broadcast_id"], "abc123")
+            self.assertEqual(kwargs["title"], "Sermón - En Vivo")
+            self.assertTrue(kwargs["thumbnail_path"].endswith("yt_latest.png"))
 
 
 if __name__ == "__main__":

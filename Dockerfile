@@ -12,9 +12,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files and static assets
-COPY app.py script.py config.template.json miniaturas.csv ./
+COPY app.py script.py youtube_service.py config.template.json miniaturas.csv ./
 COPY segoe-ui-black.ttf segoe-ui-bold.ttf ./
 COPY assets/ ./assets/
+COPY templates/ ./templates/
 
 RUN mkdir -p /app/thumbnails
 

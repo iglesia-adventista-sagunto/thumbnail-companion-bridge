@@ -1,6 +1,9 @@
 # Configuration files with real credentials/tokens
 config.json
 *.local.json
+client_secrets.json
+youtube_token.json
+*.token.json
 
 # Environment variables & secrets
 .env

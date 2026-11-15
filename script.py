@@ -480,6 +480,7 @@ def generate_thumbnails(
     generated_files = []
     generated_paths = []
     attribution_entries = []
+    file_attributions = {}
 
     for v_idx, (bg_img, attr) in enumerate(fetched):
         suffix = f"_var{v_idx + 1}" if len(fetched) > 1 else ""
@@ -500,6 +501,7 @@ def generate_thumbnails(
 
         if attr and attr.get("attribution_text"):
             attribution_entries.append(f"[{out_filename}]\n{attr['attribution_text']}\n")
+            file_attributions[out_filename] = attr["attribution_text"]
 
     if attribution_entries:
         write_attributions(attribution_entries, attr_path, append=append_attributions)
@@ -511,6 +513,7 @@ def generate_thumbnails(
         "files": generated_files,
         "paths": generated_paths,
         "attributions": attribution_entries,
+        "file_attributions": file_attributions,
     }
 
 
@@ -538,6 +541,7 @@ def batch_process(
     watermark_img = build_sidebar_watermark(watermark_file, logo_file)
     all_attributions = []
     all_files = []
+    file_metadata = {}
 
     for index, row in df.iterrows():
         raw_filename = str(row.get("Filename", f"thumb_{index}")).strip()
@@ -571,6 +575,13 @@ def batch_process(
         )
         all_files.extend(result["files"])
         all_attributions.extend(result["attributions"])
+        for fname in result["files"]:
+            file_metadata[fname] = {
+                "title": result["title"],
+                "subtitle": result["subtitle"],
+                "query": result["query"],
+                "attribution": result.get("file_attributions", {}).get(fname, ""),
+            }
 
     if all_attributions:
         write_attributions(all_attributions, attr_path, append=False)
@@ -580,6 +591,7 @@ def batch_process(
         "rows_processed": len(df),
         "files": all_files,
         "attributions_file": attr_path,
+        "file_metadata": file_metadata,
     }
 
 

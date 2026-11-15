@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Automatic Thumbnail Bridge</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-alt: #0b1220;
+      --border: #334155;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.05rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: #14532d;
+      color: #bbf7d0;
+    }
+    .badge.busy { background: #78350f; color: #fde68a; }
+    .badge.warn { background: #7c2d12; color: #fed7aa; }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 1024px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .col {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .card-header h2 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 650;
+    }
+    .muted { color: var(--muted); font-size: 0.84rem; }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: 2px solid var(--primary);
+      border-color: transparent;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .full { grid-column: 1 / -1; }
+    button, .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 13px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      background: var(--primary);
+      color: #fff;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    button:hover, .btn:hover { background: var(--primary-hover); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surface-alt);
+      border-color: var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover { background: #1e293b; }
+    .btn-success { background: #16a34a; }
+    .btn-success:hover { background: #15803d; }
+    .btn-danger { background: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: 5px 9px; font-size: 0.78rem; }
+
+    .latest-preview {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .latest-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .preset-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .preset-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .preset-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .preset-info strong {
+      display: block;
+      font-size: 0.9rem;
+    }
+    .preset-info span {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .thumb-card {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .thumb-card.is-latest {
+      border-color: var(--success);
+      box-shadow: 0 0 0 1px var(--success);
+    }
+    .thumb-card img {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      display: block;
+      background: #020617;
+    }
+    .thumb-body {
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+    .thumb-name {
+      font-size: 0.84rem;
+      font-weight: 600;
+      word-break: break-all;
+    }
+    .thumb-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: auto;
+    }
+    .thumb-actions button { flex: 1; }
+
+    .csv-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    th, td {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    th {
+      background: var(--surface-alt);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.78rem;
+    }
+    td input {
+      padding: 5px 7px;
+      font-size: 0.82rem;
+    }
+
+    .yt-preview-box {
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      margin: 10px 0;
+      font-size: 0.85rem;
+    }
+    .yt-preview-box code {
+      display: block;
+      white-space: pre-wrap;
+      color: #cbd5e1;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.8rem;
+      margin-top: 4px;
+    }
+    .toast {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      background: #1e293b;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.88rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      z-index: 50;
+      display: none;
+    }
+    .toast.show { display: block; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>Automatic Thumbnail Bridge</span>
+      <span id="statusBadge" class="badge">Ready</span>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn-secondary btn-sm" href="/latest" target="_blank">Open /latest PNG</a>
+      <button class="btn-secondary btn-sm" onclick="refreshAll()">Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- LEFT COLUMN -->
+    <div class="col">
+      <!-- Active /latest -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Active /latest (ATEM / YouTube)</h2>
+          <span id="latestBadge" class="muted">Loading...</span>
+        </div>
+        <div class="latest-preview">
+          <img id="latestImg" src="/latest" alt="Latest thumbnail" onerror="this.style.display='none'" />
+        </div>
+        <div id="latestMeta" class="muted">No thumbnail selected yet.</div>
+      </section>
+
+      <!-- Presets -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Presets</h2>
+          <button class="btn-secondary btn-sm" onclick="toggleAddPreset()">+ Add Preset</button>
+        </div>
+
+        <form id="addPresetForm" class="form-grid hidden" style="margin-bottom:12px;" onsubmit="savePreset(event)">
+          <div>
+            <label>Preset Key *</label>
+            <input id="pName" placeholder="e.g. sabado" required />
+          </div>
+          <div>
+            <label>Filename</label>
+            <input id="pFilename" placeholder="miniatura_sabado" />
+          </div>
+          <div class="full">
+            <label>Title *</label>
+            <input id="pTitle" placeholder="Culto de Adoración" required />
+          </div>
+          <div>
+            <label>Subtitle</label>
+            <input id="pSubtitle" placeholder="Sábado en Directo" />
+          </div>
+          <div>
+            <label>Background Query / URL</label>
+            <input id="pQuery" placeholder="iglesia" value="default" />
+          </div>
+          <div>
+            <label>Variations</label>
+            <input id="pVariations" type="number" min="1" max="10" value="1" />
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:6px;">
+            <button type="submit" class="btn-success" style="flex:1;">Save Preset</button>
+          </div>
+        </form>
+
+        <div id="presetList" class="preset-list"></div>
+      </section>
+
+      <!-- Custom Generate -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Quick Generate</h2>
+        </div>
+        <form id="genForm" class="form-grid" onsubmit="generateCustom(event)">
+          <div class="full">
+            <label>Title *</label>
+            <input id="gTitle" required placeholder="Culto de Adoración" />
+          </div>
+          <div class="full">
+            <label>Subtitle</label>
+            <input id="gSubtitle" placeholder="Sábado en Directo" />
+          </div>
+          <div>
+            <label>Background Query / URL</label>
+            <input id="gQuery" value="iglesia" placeholder="iglesia or https://..." />
+          </div>
+          <div>
+            <label>Filename</label>
+            <input id="gFilename" placeholder="optional" />
+          </div>
+          <div>
+            <label>Variations</label>
+            <input id="gVariations" type="number" min="1" max="10" value="1" />
+          </div>
+          <div style="display:flex;align-items:flex-end;">
+            <button type="submit" style="width:100%;">Generate</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="col">
+      <!-- Gallery -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Generated Thumbnails</h2>
+          <span id="galleryCount" class="muted">0 images</span>
+        </div>
+        <div id="gallery" class="gallery"></div>
+      </section>
+
+      <!-- CSV Batch -->
+      <section class="card">
+        <div class="card-header">
+          <h2>Batch CSV (miniaturas.csv)</h2>
+          <div style="display:flex;gap:6px;">
+            <button class="btn-secondary btn-sm" onclick="addCsvRow()">+ Add Row</button>
+            <button class="btn-secondary btn-sm" onclick="saveCsv(false)">Save CSV</button>
+            <button class="btn-success btn-sm" onclick="saveCsv(true)">Save &amp; Run Batch</button>
+          </div>
+        </div>
+        <div class="csv-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Filename</th>
+                <th>Title</th>
+                <th>Subtitle</th>
+                <th>Query / URL</th>
+                <th style="width:70px;">Vars</th>
+                <th style="width:45px;"></th>
+              </tr>
+            </thead>
+            <tbody id="csvBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- YouTube Livestream Integration -->
+      <section class="card">
+        <div class="card-header">
+          <h2>YouTube Livestream Sync (Optional)</h2>
+          <span id="ytStatusBadge" class="badge warn">Checking...</span>
+        </div>
+
+        <div id="ytAuthRow" class="hidden" style="margin-bottom:10px;">
+          <button class="btn-secondary btn-sm" onclick="connectYouTube()">Connect YouTube Account</button>
+          <span id="ytAuthHint" class="muted" style="margin-left:8px;"></span>
+        </div>
+
+        <div class="form-grid">
+          <div class="full">
+            <label>Livestream Broadcast (auto-detects upcoming/active if blank)</label>
+            <div style="display:flex;gap:6px;">
+              <select id="ytBroadcastSelect" onchange="onSelectBroadcast()">
+                <option value="">-- Auto-detect active / upcoming --</option>
+              </select>
+              <input id="ytBroadcastId" placeholder="Or paste Broadcast / Video ID" style="max-width:220px;" />
+            </div>
+          </div>
+          <div class="full">
+            <label>Title Override (default: [title] - [subtitle] from /latest)</label>
+            <input id="ytTitleInput" placeholder="Auto-generated from /latest" />
+          </div>
+        </div>
+
+        <div class="yt-preview-box">
+          <div><strong>Pregenerated Title:</strong> <span id="ytPreviewTitle">-</span></div>
+          <div style="margin-top:6px;"><strong>Miniatura License (bottom of description):</strong> <span id="ytPreviewLicense">-</span></div>
+          <div id="ytPreviewDescWrap" class="hidden" style="margin-top:6px;">
+            <strong>Description Preview:</strong>
+            <code id="ytPreviewDesc"></code>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn-secondary" onclick="loadYouTubePreview()">Refresh Preview</button>
+          <button class="btn-success" onclick="pushToYouTube()">Update YouTube Livestream</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let csvRows = [];
+
+    function toast(msg, isError = false) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.style.borderColor = isError ? "#ef4444" : "#22c55e";
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 3500);
+    }
+
+    async function api(url, opts = {}) {
+      const res = await fetch(url, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function loadStatus() {
+      try {
+        const s = await api("/status");
+        const badge = document.getElementById("statusBadge");
+        badge.textContent = s.busy ? "Generating..." : "Ready";
+        badge.className = s.busy ? "badge busy" : "badge";
+      } catch (e) {}
+    }
+
+    async function loadLatest() {
+      const img = document.getElementById("latestImg");
+      const badge = document.getElementById("latestBadge");
+      const meta = document.getElementById("latestMeta");
+      try {
+        const info = await api("/latest?format=json");
+        img.style.display = "block";
+        img.src = `/latest?t=${Date.now()}`;
+        badge.textContent = info.pinned ? `Pinned: ${info.filename}` : `Newest: ${info.filename}`;
+        meta.innerHTML = `
+          <div><strong>${info.title || "(no title)"}</strong>${info.subtitle ? " — " + info.subtitle : ""}</div>
+          <div style="margin-top:4px;">License: ${info.attribution || "N/A"}</div>
+        `;
+      } catch (e) {
+        img.style.display = "none";
+        badge.textContent = "None";
+        meta.textContent = "No thumbnails generated yet.";
+      }
+    }
+
+    async function loadPresets() {
+      const data = await api("/presets");
+      const list = document.getElementById("presetList");
+      list.innerHTML = "";
+      for (const p of data.presets) {
+        const row = document.createElement("div");
+        row.className = "preset-row";
+        row.innerHTML = `
+          <div class="preset-info">
+            <strong>${escapeHtml(p.name)}</strong>
+            <span>${escapeHtml(p.title)}${p.subtitle ? " — " + escapeHtml(p.subtitle) : ""}</span>
+          </div>
+          <button class="btn-sm" onclick="runPreset('${escapeAttr(p.name)}')">Generate</button>
+          <button class="btn-secondary btn-sm" onclick='fillForm(${JSON.stringify(p)})'>Edit</button>
+          <button class="btn-danger btn-sm" onclick="deletePreset('${escapeAttr(p.name)}')">✕</button>
+        `;
+        list.appendChild(row);
+      }
+    }
+
+    function toggleAddPreset() {
+      document.getElementById("addPresetForm").classList.toggle("hidden");
+    }
+
+    function fillForm(p) {
+      document.getElementById("gTitle").value = p.title || "";
+      document.getElementById("gSubtitle").value = p.subtitle || "";
+      document.getElementById("gQuery").value = p.query || "default";
+      document.getElementById("gFilename").value = p.filename || "";
+      document.getElementById("gVariations").value = p.variations || 1;
+      toast(`Loaded preset '${p.name}' into form`);
+    }
+
+    async function savePreset(e) {
+      e.preventDefault();
+      try {
+        await api("/presets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: document.getElementById("pName").value,
+            filename: document.getElementById("pFilename").value,
+            title: document.getElementById("pTitle").value,
+            subtitle: document.getElementById("pSubtitle").value,
+            query: document.getElementById("pQuery").value,
+            variations: parseInt(document.getElementById("pVariations").value || "1", 10),
+          }),
+        });
+        document.getElementById("addPresetForm").reset();
+        document.getElementById("addPresetForm").classList.add("hidden");
+        toast("Preset saved!");
+        await loadPresets();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    async function deletePreset(name) {
+      if (!confirm(`Delete preset '${name}'?`)) return;
+      try {
+        await api(`/presets/${encodeURIComponent(name)}`, { method: "DELETE" });
+        toast(`Preset '${name}' deleted`);
+        await loadPresets();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    async function runPreset(name) {
+      try {
+        toast(`Generating '${name}'...`);
+        await api(`/${encodeURIComponent(name)}/generate`, { method: "POST" });
+        toast(`Preset '${name}' generated!`);
+        await refreshThumbnailsAndYouTube();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    async function generateCustom(e) {
+      e.preventDefault();
+      try {
+        toast("Generating thumbnail...");
+        await api("/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: document.getElementById("gTitle").value,
+            subtitle: document.getElementById("gSubtitle").value,
+            query: document.getElementById("gQuery").value,
+            filename: document.getElementById("gFilename").value || undefined,
+            variations: parseInt(document.getElementById("gVariations").value || "1", 10),
+          }),
+        });
+        toast("Thumbnail generated!");
+        await refreshThumbnailsAndYouTube();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    async function loadGallery() {
+      const data = await api("/thumbnails");
+      document.getElementById("galleryCount").textContent = `${data.count} image(s)`;
+      const el = document.getElementById("gallery");
+      el.innerHTML = "";
+      for (const t of data.thumbnails) {
+        const card = document.createElement("div");
+        card.className = `thumb-card ${t.is_latest ? "is-latest" : ""}`;
+        card.innerHTML = `
+          <img src="${t.url}?t=${Date.now()}" alt="${escapeAttr(t.filename)}" loading="lazy" />
+          <div class="thumb-body">
+            <div class="thumb-name">${escapeHtml(t.filename)}</div>
+            <div class="muted">${escapeHtml(t.title || "")}${t.subtitle ? " — " + escapeHtml(t.subtitle) : ""}</div>
+            <div class="thumb-actions">
+              <button class="${t.is_latest ? "btn-success" : "btn-secondary"} btn-sm"
+                      onclick="setAsLatest('${escapeAttr(t.filename)}')">
+                ${t.is_latest ? "✓ Active /latest" : "Set as /latest"}
+              </button>
+              <button class="btn-danger btn-sm" style="flex:0;" onclick="deleteThumb('${escapeAttr(t.filename)}')">✕</button>
+            </div>
+          </div>
+        `;
+        el.appendChild(card);
+      }
+    }
+
+    async function setAsLatest(filename) {
+      try {
+        await api("/latest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename }),
+        });
+        toast(`/latest set to ${filename}`);
+        await refreshThumbnailsAndYouTube();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    async function deleteThumb(filename) {
+      if (!confirm(`Delete ${filename}?`)) return;
+      try {
+        await api(`/thumbnails/${encodeURIComponent(filename)}`, { method: "DELETE" });
+        toast(`Deleted ${filename}`);
+        await refreshThumbnailsAndYouTube();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    async function loadCsv() {
+      const data = await api("/csv");
+      csvRows = data.rows || [];
+      renderCsvTable();
+    }
+
+    function renderCsvTable() {
+      const body = document.getElementById("csvBody");
+      body.innerHTML = "";
+      csvRows.forEach((row, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><input value="${escapeAttr(row.Filename || "")}" oninput="csvRows[${idx}].Filename=this.value" /></td>
+          <td><input value="${escapeAttr(row.Title || "")}" oninput="csvRows[${idx}].Title=this.value" /></td>
+          <td><input value="${escapeAttr(row.Subtitle || "")}" oninput="csvRows[${idx}].Subtitle=this.value" /></td>
+          <td><input value="${escapeAttr(row.Unsplash_Keyword_or_URL || "")}" oninput="csvRows[${idx}].Unsplash_Keyword_or_URL=this.value" /></td>
+          <td><input type="number" min="1" max="10" value="${escapeAttr(row.Variations || "1")}" oninput="csvRows[${idx}].Variations=this.value" /></td>
+          <td><button class="btn-danger btn-sm" onclick="removeCsvRow(${idx})">✕</button></td>
+        `;
+        body.appendChild(tr);
+      });
+    }
+
+    function addCsvRow() {
+      csvRows.push({ Filename: "", Title: "", Subtitle: "", Unsplash_Keyword_or_URL: "iglesia", Variations: "1" });
+      renderCsvTable();
+    }
+
+    function removeCsvRow(idx) {
+      csvRows.splice(idx, 1);
+      renderCsvTable();
+    }
+
+    async function saveCsv(runBatch) {
+      try {
+        if (runBatch) toast("Saving CSV and running batch...");
+        const res = await api("/csv", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: csvRows, run: runBatch }),
+        });
+        toast(runBatch ? `Batch done: ${(res.files || []).length} image(s) generated` : "CSV saved!");
+        if (runBatch) await refreshThumbnailsAndYouTube();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    async function loadYouTubeStatus() {
+      try {
+        const st = await api("/youtube/status");
+        const badge = document.getElementById("ytStatusBadge");
+        const authRow = document.getElementById("ytAuthRow");
+        const hint = document.getElementById("ytAuthHint");
+
+        if (!st.libs_available) {
+          badge.textContent = "Libs Missing";
+          badge.className = "badge warn";
+          authRow.classList.remove("hidden");
+          hint.textContent = "Install google-api-python-client & google-auth-oauthlib.";
+        } else if (!st.client_secrets_exists) {
+          badge.textContent = "No client_secrets.json";
+          badge.className = "badge warn";
+          authRow.classList.remove("hidden");
+          hint.textContent = "Place client_secrets.json in app directory to enable OAuth.";
+        } else if (!st.authenticated) {
+          badge.textContent = "Not Connected";
+          badge.className = "badge warn";
+          authRow.classList.remove("hidden");
+          hint.textContent = "Click to authorize YouTube channel.";
+        } else {
+          badge.textContent = "Connected";
+          badge.className = "badge";
+          authRow.classList.add("hidden");
+          await loadBroadcasts();
+        }
+      } catch (e) {}
+    }
+
+    async function loadBroadcasts() {
+      try {
+        const data = await api("/youtube/broadcasts");
+        const sel = document.getElementById("ytBroadcastSelect");
+        sel.innerHTML = '<option value="">-- Auto-detect active / upcoming --</option>';
+        for (const b of data.broadcasts || []) {
+          const opt = document.createElement("option");
+          opt.value = b.id;
+          opt.textContent = `[${b.lifecycle_status}] ${b.title} (${b.id})`;
+          sel.appendChild(opt);
+        }
+      } catch (e) {}
+    }
+
+    function onSelectBroadcast() {
+      const val = document.getElementById("ytBroadcastSelect").value;
+      if (val) document.getElementById("ytBroadcastId").value = val;
+      loadYouTubePreview();
+    }
+
+    async function connectYouTube() {
+      try {
+        const data = await api("/youtube/auth/start");
+        window.open(data.auth_url, "_blank");
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    async function loadYouTubePreview() {
+      try {
+        const bid = document.getElementById("ytBroadcastId").value.trim();
+        const url = bid ? `/youtube/preview?broadcast_id=${encodeURIComponent(bid)}` : "/youtube/preview";
+        const data = await api(url);
+        document.getElementById("ytPreviewTitle").textContent = data.title || "(no title metadata)";
+        document.getElementById("ytPreviewLicense").textContent = data.license || "(no license metadata)";
+        const descWrap = document.getElementById("ytPreviewDescWrap");
+        if (data.description) {
+          descWrap.classList.remove("hidden");
+          document.getElementById("ytPreviewDesc").textContent = data.description;
+        } else {
+          descWrap.classList.add("hidden");
+        }
+      } catch (e) {}
+    }
+
+    async function pushToYouTube() {
+      try {
+        toast("Updating YouTube livestream...");
+        const payload = {};
+        const bid = document.getElementById("ytBroadcastId").value.trim();
+        const titleOverride = document.getElementById("ytTitleInput").value.trim();
+        if (bid) payload.broadcast_id = bid;
+        if (titleOverride) payload.title = titleOverride;
+        const res = await api("/youtube/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        toast(`YouTube updated (${res.broadcast_id})!`);
+        await loadYouTubePreview();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    function escapeAttr(s) {
+      return escapeHtml(s);
+    }
+
+    async function refreshThumbnailsAndYouTube() {
+      await Promise.all([loadStatus(), loadLatest(), loadGallery(), loadYouTubePreview()]);
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadStatus(), loadLatest(), loadPresets(), loadGallery(), loadCsv(), loadYouTubeStatus(), loadYouTubePreview()]);
+    }
+
+    refreshAll();
+  </script>
+</body>
+</html>

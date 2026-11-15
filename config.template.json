@@ -7,6 +7,11 @@
   "watermark_file": "assets/right_sidebar_watermark.png",
   "logo_file": "assets/logo_watermark_bold.png",
   "font_file": "",
+  "youtube": {
+    "client_secrets_file": "client_secrets.json",
+    "token_file": "youtube_token.json",
+    "default_broadcast_id": ""
+  },
   "presets": [
     {
       "name": "sabado",
