@@ -430,6 +430,36 @@
             <input id="gQuery" value="iglesia" placeholder="iglesia or https://..." />
           </div>
           <div>
+            <label>Or Upload Background</label>
+            <input id="gBgFile" type="file" accept="image/*" onchange="onBgFileSelected(event)" style="padding:5px;" />
+          </div>
+          <div id="bgEditorBox" class="full hidden" style="background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:10px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span class="muted"><strong>Background Editor</strong> (drag image to pan)</span>
+              <button type="button" class="btn-danger btn-sm" onclick="clearBgUpload()">Remove Upload</button>
+            </div>
+            <canvas id="bgCanvas" width="640" height="360" style="width:100%;aspect-ratio:16/9;border-radius:6px;background:#020617;cursor:grab;display:block;margin-bottom:8px;"></canvas>
+            <div class="form-grid" style="gap:8px;">
+              <div>
+                <label>Zoom (<span id="bgZoomVal">100</span>%)</label>
+                <input id="bgZoom" type="range" min="100" max="250" value="100" oninput="renderBgCanvas()" />
+              </div>
+              <div>
+                <label>Brightness (<span id="bgBrightVal">100</span>%)</label>
+                <input id="bgBright" type="range" min="50" max="150" value="100" oninput="renderBgCanvas()" />
+              </div>
+              <div>
+                <label>Contrast (<span id="bgContrastVal">100</span>%)</label>
+                <input id="bgContrast" type="range" min="50" max="150" value="100" oninput="renderBgCanvas()" />
+              </div>
+              <div style="display:flex;align-items:flex-end;gap:6px;">
+                <button type="button" class="btn-secondary btn-sm" onclick="rotateBg(-90)">↺ -90°</button>
+                <button type="button" class="btn-secondary btn-sm" onclick="rotateBg(90)">↻ +90°</button>
+                <button type="button" class="btn-secondary btn-sm" onclick="resetBgEditor()">Reset</button>
+              </div>
+            </div>
+          </div>
+          <div>
             <label>Filename</label>
             <input id="gFilename" placeholder="optional" />
           </div>
@@ -450,7 +480,10 @@
       <section class="card">
         <div class="card-header">
           <h2>Generated Thumbnails</h2>
-          <span id="galleryCount" class="muted">0 images</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span id="galleryCount" class="muted">0 images</span>
+            <button class="btn-secondary btn-sm" onclick="runGarbageCollector()">Clean Old (GC)</button>
+          </div>
         </div>
         <div id="gallery" class="gallery"></div>
       </section>
@@ -766,10 +799,136 @@
       }
     }
 
+    let bgImg = null;
+    let bgState = { panX: 0, panY: 0, rot: 0, dragging: false, lastX: 0, lastY: 0 };
+
+    function onBgFileSelected(e) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          bgImg = img;
+          resetBgEditor();
+          document.getElementById("bgEditorBox").classList.remove("hidden");
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearBgUpload() {
+      bgImg = null;
+      document.getElementById("gBgFile").value = "";
+      document.getElementById("bgEditorBox").classList.add("hidden");
+    }
+
+    function resetBgEditor() {
+      bgState = { panX: 0, panY: 0, rot: 0, dragging: false, lastX: 0, lastY: 0 };
+      document.getElementById("bgZoom").value = 100;
+      document.getElementById("bgBright").value = 100;
+      document.getElementById("bgContrast").value = 100;
+      renderBgCanvas();
+    }
+
+    function rotateBg(deg) {
+      bgState.rot = (bgState.rot + deg + 360) % 360;
+      renderBgCanvas();
+    }
+
+    function drawBgToCanvas(canvas) {
+      if (!bgImg) return;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      const zoom = parseInt(document.getElementById("bgZoom").value, 10) / 100;
+      const bright = parseInt(document.getElementById("bgBright").value, 10);
+      const contrast = parseInt(document.getElementById("bgContrast").value, 10);
+
+      document.getElementById("bgZoomVal").textContent = Math.round(zoom * 100);
+      document.getElementById("bgBrightVal").textContent = bright;
+      document.getElementById("bgContrastVal").textContent = contrast;
+
+      ctx.save();
+      ctx.fillStyle = "#020617";
+      ctx.fillRect(0, 0, w, h);
+      ctx.filter = `brightness(${bright}%) contrast(${contrast}%)`;
+
+      const rad = (bgState.rot * Math.PI) / 180;
+      const rotated = bgState.rot === 90 || bgState.rot === 270;
+      const srcW = rotated ? bgImg.height : bgImg.width;
+      const srcH = rotated ? bgImg.width : bgImg.height;
+      const coverScale = Math.max(w / srcW, h / srcH) * zoom;
+
+      const scaleFactor = w / 640;
+      ctx.translate(w / 2 + bgState.panX * scaleFactor, h / 2 + bgState.panY * scaleFactor);
+      ctx.rotate(rad);
+      ctx.drawImage(
+        bgImg,
+        (-bgImg.width * coverScale) / 2,
+        (-bgImg.height * coverScale) / 2,
+        bgImg.width * coverScale,
+        bgImg.height * coverScale
+      );
+      ctx.restore();
+    }
+
+    function renderBgCanvas() {
+      drawBgToCanvas(document.getElementById("bgCanvas"));
+    }
+
+    (function initBgPan() {
+      const canvas = document.getElementById("bgCanvas");
+      canvas.addEventListener("pointerdown", e => {
+        bgState.dragging = true;
+        bgState.lastX = e.clientX;
+        bgState.lastY = e.clientY;
+        canvas.setPointerCapture(e.pointerId);
+      });
+      canvas.addEventListener("pointermove", e => {
+        if (!bgState.dragging) return;
+        const rect = canvas.getBoundingClientRect();
+        const scale = 640 / rect.width;
+        bgState.panX += (e.clientX - bgState.lastX) * scale;
+        bgState.panY += (e.clientY - bgState.lastY) * scale;
+        bgState.lastX = e.clientX;
+        bgState.lastY = e.clientY;
+        renderBgCanvas();
+      });
+      canvas.addEventListener("pointerup", () => { bgState.dragging = false; });
+      canvas.addEventListener("pointercancel", () => { bgState.dragging = false; });
+    })();
+
+    async function runGarbageCollector() {
+      clearError();
+      try {
+        const res = await api("/gc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }, "Clean Old Thumbnails");
+        toast(`GC complete: removed ${res.deleted_count}, kept ${res.kept_count}`);
+        await refreshThumbnailsAndYouTube();
+      } catch (err) {}
+    }
+
     async function generateCustom(e) {
       e.preventDefault();
       clearError();
       try {
+        let backgroundId;
+        if (bgImg) {
+          toast("Uploading edited background...");
+          const exportCanvas = document.createElement("canvas");
+          exportCanvas.width = 1920;
+          exportCanvas.height = 1080;
+          drawBgToCanvas(exportCanvas);
+          const dataUrl = exportCanvas.toDataURL("image/png");
+          const upRes = await api("/backgrounds/upload", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image_data_url: dataUrl }),
+          }, "Upload Background");
+          backgroundId = upRes.background_id;
+        }
+
         toast("Generating thumbnail...");
         await api("/generate", {
           method: "POST",
@@ -778,6 +937,7 @@
             title: document.getElementById("gTitle").value,
             subtitle: document.getElementById("gSubtitle").value,
             query: document.getElementById("gQuery").value,
+            background_id: backgroundId,
             filename: document.getElementById("gFilename").value || undefined,
             variations: parseInt(document.getElementById("gVariations").value || "1", 10),
             async: true,

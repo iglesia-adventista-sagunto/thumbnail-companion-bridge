@@ -193,6 +193,20 @@ def get_unsplash_variations(keyword_or_url, count=1, access_key=None):
     api_key = (access_key if access_key is not None else UNSPLASH_ACCESS_KEY).strip()
     variations = []
 
+    # Case 0: Local uploaded image file
+    if raw and os.path.isfile(raw):
+        try:
+            with Image.open(raw) as local_img:
+                base_img = local_img.convert("RGBA")
+            attr = {
+                "author": "Uploaded Background",
+                "photo_url": "",
+                "attribution_text": f"Custom uploaded background ({os.path.basename(raw)})",
+            }
+            return [(base_img.copy(), dict(attr)) for _ in range(max(1, count))]
+        except Exception as e:
+            logger.warning("Failed to load local background '%s': %s", raw, e)
+
     # Case 1: Direct URLs (single or comma-separated)
     if "http://" in raw or "https://" in raw:
         urls = [u.strip() for u in raw.split(",") if u.strip().startswith("http")]

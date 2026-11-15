@@ -7,6 +7,9 @@
   "watermark_file": "assets/right_sidebar_watermark.png",
   "logo_file": "assets/logo_watermark_bold.png",
   "font_file": "",
+  "gc_max_thumbnails": 30,
+  "gc_max_age_days": 30,
+  "gc_auto": true,
   "youtube": {
     "client_secrets_file": "client_secrets.json",
     "token_file": "youtube_token.json",

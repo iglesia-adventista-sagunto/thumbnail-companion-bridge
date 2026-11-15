@@ -1,3 +1,4 @@
+import base64
 import csv
 import io
 import json
@@ -5,6 +6,7 @@ import logging
 import os
 import tempfile
 import threading
+import time
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
@@ -56,6 +58,14 @@ def _resolve_dir(path_val, default_rel):
     return os.path.abspath(os.path.join(BASE_DIR, raw))
 
 
+def _parse_bool(val, default=False):
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    return str(val).strip().lower() in ("1", "true", "yes", "on")
+
+
 def load_config():
     """Load service configuration from CONFIG_PATH (or template/defaults) with env overrides."""
     config_path = _resolve_config_path()
@@ -100,6 +110,10 @@ def load_config():
         os.environ.get("YOUTUBE_REDIRECT_URI") or yt_cfg.get("redirect_uri") or ""
     ).strip()
 
+    gc_max_thumbnails = int(os.environ.get("GC_MAX_THUMBNAILS") or data.get("gc_max_thumbnails", 30))
+    gc_max_age_days = int(os.environ.get("GC_MAX_AGE_DAYS") or data.get("gc_max_age_days", 30))
+    gc_auto = _parse_bool(os.environ.get("GC_AUTO"), default=bool(data.get("gc_auto", True)))
+
     presets = {}
     for item in data.get("presets", []):
         name = str(item.get("name", "")).strip()
@@ -124,6 +138,11 @@ def load_config():
         "logo_file": logo_file,
         "font_file": font_file or None,
         "csv_path": csv_path,
+        "gc": {
+            "max_thumbnails": max(0, gc_max_thumbnails),
+            "max_age_days": max(0, gc_max_age_days),
+            "auto": gc_auto,
+        },
         "youtube": {
             "client_secrets_file": youtube_client_secrets,
             "token_file": youtube_token_file,
@@ -166,14 +185,6 @@ def resolve_preset(name):
     if not name:
         return None
     return cfg["presets"].get(str(name).strip().lower())
-
-
-def _parse_bool(val, default=False):
-    if val is None:
-        return default
-    if isinstance(val, bool):
-        return val
-    return str(val).strip().lower() in ("1", "true", "yes", "on")
 
 
 def _extract_params():
@@ -357,6 +368,9 @@ def _run_generation(title, subtitle, query, filename, variations, site_url, pres
             job_state["last_file"] = first_file
             job_state["total_generated"] += len(result["files"])
 
+        if cfg["gc"]["auto"]:
+            run_garbage_collector()
+
         return result
     except Exception as e:
         logger.exception("Thumbnail generation failed: %s", e)
@@ -381,12 +395,20 @@ def _handle_generate(preset=None):
         return jsonify({"error": "Missing required parameter: title"}), 400
 
     subtitle = params.get("subtitle") if params.get("subtitle") is not None else (preset["subtitle"] if preset else "")
-    query = (
-        params.get("query")
-        or params.get("keyword")
-        or params.get("url")
-        or (preset["query"] if preset else "default")
-    )
+    background_id = str(params.get("background_id") or "").strip()
+    if background_id:
+        safe_bg = _safe_thumbnail_name(background_id)
+        bg_path = os.path.join(_backgrounds_dir(), safe_bg) if safe_bg else None
+        if not bg_path or not os.path.isfile(bg_path):
+            return jsonify({"error": f"Uploaded background '{background_id}' not found"}), 404
+        query = bg_path
+    else:
+        query = (
+            params.get("query")
+            or params.get("keyword")
+            or params.get("url")
+            or (preset["query"] if preset else "default")
+        )
     filename = params.get("filename") or (preset["filename"] if preset else None)
     site_url = params.get("site_url") or (preset["site_url"] if preset else cfg["default_website"])
 
@@ -598,6 +620,8 @@ def _run_batch_job(csv_path, csv_content=None):
             job_state["last_files"] = res["files"]
             job_state["last_file"] = last_file
             job_state["total_generated"] += len(res["files"])
+        if cfg["gc"]["auto"]:
+            run_garbage_collector()
         return res
     except Exception as e:
         logger.exception("Batch processing failed: %s", e)
@@ -932,6 +956,144 @@ def reload_config():
     cfg = load_config()
     os.makedirs(cfg["output_dir"], exist_ok=True)
     return jsonify({"status": "reloaded", "presets_count": len(cfg["presets"])}), 200
+
+
+def _backgrounds_dir():
+    path = os.path.join(cfg["output_dir"], "_backgrounds")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def run_garbage_collector(max_thumbnails=None, max_age_days=None, dry_run=False):
+    """
+    Prune old thumbnails so output_dir never oversaturates.
+    Always protects the active /latest thumbnail (whether pinned or newest).
+    Also prunes old uploaded backgrounds in _backgrounds/ (keeps newest 10).
+    """
+    max_count = cfg["gc"]["max_thumbnails"] if max_thumbnails is None else max(0, int(max_thumbnails))
+    max_days = cfg["gc"]["max_age_days"] if max_age_days is None else max(0, int(max_age_days))
+
+    out_dir = cfg["output_dir"]
+    if not os.path.isdir(out_dir):
+        return {"deleted": [], "deleted_count": 0, "kept_count": 0, "protected_latest": None, "dry_run": dry_run}
+
+    latest_entry, _ = _get_active_latest()
+    protected_name = latest_entry["filename"] if latest_entry else None
+
+    png_items = []
+    for name in os.listdir(out_dir):
+        if not name.lower().endswith(".png"):
+            continue
+        full_path = os.path.join(out_dir, name)
+        if os.path.isfile(full_path):
+            png_items.append((name, full_path, os.stat(full_path).st_mtime))
+
+    png_items.sort(key=lambda item: item[2], reverse=True)
+    now_ts = time.time()
+    cutoff_ts = now_ts - (max_days * 86400) if max_days > 0 else None
+
+    to_delete = []
+    kept = []
+    non_protected_kept = 0
+
+    for name, full_path, mtime in png_items:
+        if name == protected_name:
+            kept.append(name)
+            continue
+
+        too_old = bool(cutoff_ts is not None and mtime < cutoff_ts)
+        # Reserve 1 slot for protected_name if max_count > 0
+        allowed_non_protected = max(0, max_count - (1 if protected_name else 0)) if max_count > 0 else None
+        over_limit = bool(allowed_non_protected is not None and non_protected_kept >= allowed_non_protected)
+
+        if too_old or over_limit:
+            to_delete.append((name, full_path))
+        else:
+            kept.append(name)
+            non_protected_kept += 1
+
+    deleted_names = [name for name, _ in to_delete]
+    if not dry_run and to_delete:
+        with state_lock:
+            tstate = _load_thumbnail_state()
+            for name, full_path in to_delete:
+                try:
+                    os.remove(full_path)
+                    tstate["thumbnails"].pop(name, None)
+                except OSError as e:
+                    logger.warning("GC failed to delete %s: %s", name, e)
+            _save_thumbnail_state(tstate)
+
+    # Also prune uploaded temporary backgrounds in _backgrounds/ (keep newest 10)
+    bg_dir = os.path.join(out_dir, "_backgrounds")
+    if not dry_run and os.path.isdir(bg_dir):
+        bg_files = []
+        for bname in os.listdir(bg_dir):
+            bpath = os.path.join(bg_dir, bname)
+            if os.path.isfile(bpath):
+                bg_files.append((bpath, os.stat(bpath).st_mtime))
+        bg_files.sort(key=lambda item: item[1], reverse=True)
+        for bpath, _ in bg_files[10:]:
+            try:
+                os.remove(bpath)
+            except OSError:
+                pass
+
+    return {
+        "status": "ok",
+        "dry_run": dry_run,
+        "deleted": deleted_names,
+        "deleted_count": len(deleted_names),
+        "kept_count": len(kept),
+        "protected_latest": protected_name,
+        "max_thumbnails": max_count,
+        "max_age_days": max_days,
+    }
+
+
+@app.route("/backgrounds/upload", methods=["POST"])
+def upload_background():
+    """Accept a custom background image (multipart file or JSON data URL) and return background_id."""
+    bg_dir = _backgrounds_dir()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    out_name = f"bg_{stamp}.png"
+    out_path = os.path.join(bg_dir, out_name)
+
+    try:
+        if "file" in request.files:
+            up = request.files["file"]
+            with engine.Image.open(up.stream) as im:
+                im.convert("RGB").save(out_path, "PNG")
+        else:
+            params = _extract_params()
+            data_url = params.get("image_data_url") or ""
+            if not data_url:
+                return jsonify({"error": "Provide multipart 'file' or JSON 'image_data_url'"}), 400
+            if "," in data_url:
+                _, data_url = data_url.split(",", 1)
+            raw_bytes = base64.b64decode(data_url)
+            with engine.Image.open(io.BytesIO(raw_bytes)) as im:
+                im.convert("RGB").save(out_path, "PNG")
+    except Exception as e:
+        return jsonify({"error": f"Invalid image upload: {e}"}), 400
+
+    return jsonify({"status": "ok", "background_id": out_name}), 200
+
+
+@app.route("/gc", methods=["GET", "POST"])
+def garbage_collect_endpoint():
+    params = _extract_params()
+    dry_run = _parse_bool(params.get("dry_run"), default=(request.method == "GET"))
+    max_thumbs = params.get("max_thumbnails")
+    max_days = params.get("max_age_days")
+    try:
+        max_thumbs = int(max_thumbs) if max_thumbs is not None else None
+        max_days = int(max_days) if max_days is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "max_thumbnails and max_age_days must be integers"}), 400
+
+    result = run_garbage_collector(max_thumbnails=max_thumbs, max_age_days=max_days, dry_run=dry_run)
+    return jsonify(result), 200
 
 
 @app.errorhandler(500)

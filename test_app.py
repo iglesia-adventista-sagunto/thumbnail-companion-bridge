@@ -320,6 +320,35 @@ class TestAutomaticThumbnailBridge(unittest.TestCase):
         self.assertEqual(res_disc.status_code, 200)
         self.assertEqual(json.loads(res_disc.data)["status"], "disconnected")
 
+    def test_15_upload_background_and_garbage_collector(self):
+        """POST /backgrounds/upload + /generate and POST /gc protect /latest while pruning old PNGs."""
+        import base64
+        import io
+
+        buf = io.BytesIO()
+        Image.new("RGB", (640, 360), (200, 120, 40)).save(buf, format="PNG")
+        data_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+
+        res_up = self.client.post("/backgrounds/upload", json={"image_data_url": data_url})
+        self.assertEqual(res_up.status_code, 200)
+        bg_id = json.loads(res_up.data)["background_id"]
+
+        res_gen = self.client.post(
+            "/generate",
+            json={"title": "Custom BG", "filename": "custom_bg_thumb", "background_id": bg_id},
+        )
+        self.assertEqual(res_gen.status_code, 200)
+        self.assertEqual(json.loads(res_gen.data)["files"], ["custom_bg_thumb.png"])
+
+        # Pin an older image, then run GC with max_thumbnails=2 and verify pinned /latest is kept
+        self.client.post("/latest", json={"filename": "pin_a.png"})
+        res_gc = self.client.post("/gc", json={"max_thumbnails": 2, "max_age_days": 0})
+        self.assertEqual(res_gc.status_code, 200)
+        gc_data = json.loads(res_gc.data)
+        self.assertEqual(gc_data["protected_latest"], "pin_a.png")
+        self.assertLessEqual(gc_data["kept_count"], 2)
+        self.assertTrue(os.path.isfile(os.path.join(_TEMP_DIR.name, "pin_a.png")))
+
 
 if __name__ == "__main__":
     unittest.main()
