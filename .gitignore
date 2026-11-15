@@ -1,0 +1,28 @@
+# Configuration files with real credentials/tokens
+config.json
+*.local.json
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+New Text Document.txt
+*.key
+*.pem
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Logs & temp files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

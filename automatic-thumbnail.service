@@ -1,0 +1,15 @@
+[Unit]
+Description=Automatic Thumbnail HTTP Bridge (Bitfocus Companion & Livestreaming)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/automatic-thumbnail
+ExecStart=/opt/automatic-thumbnail/venv/bin/gunicorn -w 1 --threads 4 -b 0.0.0.0:5000 app:app
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

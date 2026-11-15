@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "automatic-thumbnail"
+version = "1.0.0"
+description = "Proxmox LXC & Bitfocus Companion compatible REST HTTP service for automated livestreaming thumbnail generation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["thumbnail", "bitfocus-companion", "livestreaming", "obs", "proxmox", "rest-api"]
+authors = [
+    { name = "Automatic Thumbnail Maintainers" }
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Framework :: Flask",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "Flask>=3.0.0",
+    "gunicorn>=21.2.0",
+    "Pillow>=10.0.0",
+    "numpy>=1.26.0",
+    "pandas>=2.0.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+automatic-thumbnail = "app:main"
+automatic-thumbnail-cli = "script:main"
+
+[tool.setuptools]
+py-modules = ["app", "script"]

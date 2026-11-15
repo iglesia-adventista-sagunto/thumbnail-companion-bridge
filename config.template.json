@@ -1,0 +1,36 @@
+{
+  "port": 5000,
+  "output_dir": "./thumbnails",
+  "attributions_file": "./thumbnails/attributions.txt",
+  "default_website": "sagunto.adventista.es",
+  "unsplash_access_key": "",
+  "watermark_file": "assets/right_sidebar_watermark.png",
+  "logo_file": "assets/logo_watermark_bold.png",
+  "font_file": "",
+  "presets": [
+    {
+      "name": "sabado",
+      "title": "Culto de Adoración",
+      "subtitle": "Sábado en Directo",
+      "query": "iglesia",
+      "filename": "miniatura_sabado",
+      "variations": 1
+    },
+    {
+      "name": "viernes",
+      "title": "Culto de Viernes",
+      "subtitle": "Bienvenida de Sábado",
+      "query": "oracion",
+      "filename": "miniatura_viernes",
+      "variations": 1
+    },
+    {
+      "name": "estudio",
+      "title": "Estudio Bíblico",
+      "subtitle": "Miércoles de Oración",
+      "query": "biblia",
+      "filename": "miniatura_estudio",
+      "variations": 1
+    }
+  ]
+}

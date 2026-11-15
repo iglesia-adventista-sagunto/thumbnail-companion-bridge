@@ -1,0 +1,13 @@
+services:
+  automatic-thumbnail:
+    build: .
+    container_name: automatic-thumbnail
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./thumbnails:/app/thumbnails
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CONFIG_PATH=/app/config.json
