@@ -349,6 +349,30 @@ class TestAutomaticThumbnailBridge(unittest.TestCase):
         self.assertLessEqual(gc_data["kept_count"], 2)
         self.assertTrue(os.path.isfile(os.path.join(_TEMP_DIR.name, "pin_a.png")))
 
+    def test_16_image_title_uppercase_youtube_as_is(self):
+        """Rendered image title is always UPPERCASE while YouTube and metadata keep title as-is."""
+        drawn_texts = []
+        orig_draw = engine.draw_text_with_shadow
+
+        def spy_draw(draw_img, text, position, font, text_color, *args, **kwargs):
+            drawn_texts.append(text)
+            return orig_draw(draw_img, text, position, font, text_color, *args, **kwargs)
+
+        with patch.object(engine, "draw_text_with_shadow", side_effect=spy_draw):
+            res_gen = self.client.post(
+                "/generate",
+                json={"title": "Culto de Adoración", "subtitle": "Sábado en Directo", "filename": "upper_test"},
+            )
+        self.assertEqual(res_gen.status_code, 200)
+        gen_data = json.loads(res_gen.data)
+        self.assertEqual(gen_data["title"], "Culto de Adoración")
+        self.assertIn("CULTO DE ADORACIÓN", drawn_texts)
+        self.assertIn("Sábado en Directo", drawn_texts)
+
+        res_prev = self.client.post("/youtube/preview", json={"description": "Miniatura: test"})
+        self.assertEqual(res_prev.status_code, 200)
+        self.assertEqual(json.loads(res_prev.data)["title"], "Culto de Adoración - Sábado en Directo")
+
 
 if __name__ == "__main__":
     unittest.main()

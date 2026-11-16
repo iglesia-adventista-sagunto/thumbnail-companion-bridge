@@ -395,7 +395,7 @@ def render_thumbnail(bg_image, title, subtitle, output_path, watermark_img, site
     max_text_width = 1600
 
     f_title, f_sub, title_lines, sub_lines, t_h, s_h, total_h = calculate_dynamic_typography(
-        str(title).strip(),
+        str(title).strip().upper(),
         str(subtitle).strip() if pd.notna(subtitle) else "",
         draw,
         max_width=max_text_width,
