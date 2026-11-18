@@ -1,802 +1,1223 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Automatic Thumbnail Bridge</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Miniaturas de directo | Automatic Thumbnail Bridge</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='thumbnail-logo-orange.png') }}">
   <style>
     :root {
-      --bg: #0f172a;
-      --surface: #1e293b;
-      --surface-alt: #0b1220;
-      --border: #334155;
-      --text: #f1f5f9;
-      --muted: #94a3b8;
-      --primary: #3b82f6;
-      --primary-hover: #2563eb;
-      --success: #22c55e;
-      --warning: #f59e0b;
-      --danger: #ef4444;
+      color-scheme: dark;
+      --bg: #242c38;
+      --surface: #1e2531;
+      --surface-alt: #19202c;
+      --border: #2e3847;
+      --control-border: #758499;
+      --text: #edf2fa;
+      --muted: #adb9cb;
+      --primary: #79a9ff;
+      --primary-text: #141e34;
+      --primary-soft: #273752;
+      --button-gradient: linear-gradient(90deg, #346cc3, #804bd2);
+      --button-gradient-hover: linear-gradient(90deg, #3a75cf, #8a57db);
+      --button-border: #637287;
+      --success: #9be3b9;
+      --success-bg: #20382e;
+      --warning: #f5d398;
+      --warning-bg: #413428;
+      --danger: #ffbcbc;
+      --danger-bg: #442626;
+      --dialog-scrim: rgb(10 14 22 / 66%);
+      --panel-shadow: 0 19px 15px -17px #171e2b;
       --radius: 10px;
+      --radius-control: 3px;
+      --radius-media: 5px;
     }
     * { box-sizing: border-box; }
+    ::selection { background: var(--primary); color: var(--primary-text); }
     body {
+      isolation: isolate;
+      min-height: 100vh;
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.45;
+      font: 1rem/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
     }
-    header {
+    .app-wallpaper {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      filter: blur(clamp(10px, 1.6vw, 18px)) brightness(.65);
+      transform: scale(1.08);
+      pointer-events: none;
+    }
+    [hidden], .hidden { display: none !important; }
+    h1, h2, h3, p, figure { margin: 0; }
+    h1 { font-size: 1.125rem; letter-spacing: -.02em; }
+    h2 { font-size: 1.125rem; line-height: 1.3; letter-spacing: -.015em; }
+    h3 { font-size: 1rem; }
+    .site-header {
+      padding-top: clamp(12px, 4vw, 28px);
+    }
+    .shell {
+      width: min(100%, 1120px);
+      margin-inline: auto;
+      padding-inline: clamp(12px, 4vw, 28px);
+    }
+    .card-header, .preview-footer, .actions {
       display: flex;
       flex-wrap: wrap;
+      gap: 10px;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 20px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      position: sticky;
-      top: 0;
-      z-index: 20;
     }
+    .card-header, .preview-footer { justify-content: space-between; }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header-top > .actions { justify-content: flex-end; }
     .brand {
       display: flex;
       align-items: center;
-      gap: 10px;
-      font-weight: 700;
-      font-size: 1.05rem;
+      gap: 12px;
+      min-width: 0;
     }
+    .brand-logo { display: block; width: 40px; height: 40px; object-fit: contain; flex: none; }
+    .navigation {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px;
+      width: 100%;
+      margin-bottom: 18px;
+      padding: 5px;
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--panel-shadow);
+    }
+    .navigation a {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 44px;
+      min-width: 75px;
+      padding-inline: 13px;
+      border-radius: var(--radius-control);
+      color: var(--muted);
+      font-size: .9rem;
+      font-weight: 650;
+      text-decoration: none;
+    }
+    .navigation a:hover { color: var(--text); background: var(--surface-alt); }
+    .navigation a[aria-current] {
+      color: var(--primary);
+      background: var(--primary-soft);
+    }
+    main { padding-block: clamp(16px, 3vw, 26px); }
+    .two-columns, .form-grid {
+      display: grid;
+      gap: 14px;
+    }
+    .two-columns {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+      gap: 20px;
+      align-items: start;
+    }
+    .create-layout { grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); }
+    .card.gallery-section { margin-bottom: 18px; padding: 13px 15px; scroll-margin-top: 110px; }
+    .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .full { grid-column: 1 / -1; }
+    .stack { display: grid; gap: 14px; }
+    .card {
+      position: relative;
+      min-width: 0;
+      padding: clamp(14px, 2.5vw, 22px);
+    }
+    .card, dialog {
+      border: 0;
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--panel-shadow);
+    }
+    .card-header { margin-bottom: 14px; }
+    .muted { color: var(--muted); font-size: .875rem; }
+    p, strong, summary, .thumb-name { overflow-wrap: anywhere; }
+    label { display: block; font-size: .875rem; font-weight: 650; margin-bottom: 5px; }
+    fieldset { min-width: 0; border: 0; margin: 0; padding: 0; }
+    .form-section > legend {
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 0;
+      color: var(--text);
+      font-weight: 700;
+    }
+    .form-section + .form-section > legend {
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+    input, select, textarea {
+      width: 100%;
+      min-width: 0;
+      min-height: 44px;
+      border-radius: var(--radius-control);
+      border: 1px solid var(--control-border);
+      padding: 8px 11px;
+      background: var(--surface-alt);
+      color: var(--text);
+      font: inherit;
+    }
+    input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+    input[type="file"] { padding: 6px; }
+    input::file-selector-button {
+      margin-right: 8px;
+      padding: 4px 8px;
+      border: 2px solid var(--button-border);
+      border-radius: var(--radius-control);
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      cursor: pointer;
+    }
+    input:not(:disabled)::file-selector-button:hover {
+      background: var(--primary-soft);
+      color: var(--text);
+    }
+    input[type="range"] { padding: 0; accent-color: var(--primary); }
+    :is(button, a, input, select, textarea, summary):focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 3px;
+    }
+    button, .btn {
+      --button-fill: var(--button-gradient);
+      --button-hover: var(--button-gradient-hover);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 38px;
+      padding: 7px 14px;
+      border: 2px solid transparent;
+      border-radius: var(--radius-control);
+      background: var(--button-fill);
+      color: #fff;
+      font: inherit;
+      font-size: .9375rem;
+      font-weight: 600;
+      line-height: 1.25;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    :is(button, .btn):not(:disabled):hover { background: var(--button-hover); }
+    .btn-secondary {
+      --button-fill: transparent;
+      --button-hover: var(--primary-soft);
+      color: var(--muted);
+      border-color: var(--button-border);
+    }
+    .btn-danger {
+      --button-fill: transparent;
+      --button-hover: var(--danger-bg);
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 45%, var(--surface));
+    }
+    .btn-secondary:not(:disabled):hover { color: var(--text); }
+    .btn-sm { padding-inline: 11px; font-size: .875rem; }
     .badge {
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      width: fit-content;
+      border-radius: 6px;
+      background: var(--success-bg);
+      color: var(--success);
       padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      font-weight: 600;
-      background: #14532d;
-      color: #bbf7d0;
-    }
-    .badge.busy { background: #78350f; color: #fde68a; }
-    .badge.warn { background: #7c2d12; color: #fed7aa; }
-    .badge.err { background: #7f1d1d; color: #fecaca; }
-    .error-banner {
-      max-width: 1440px;
-      margin: 14px auto 0;
-      padding: 14px 18px;
-      background: #450a0a;
-      border: 1px solid #dc2626;
-      border-radius: var(--radius);
-      color: #fee2e2;
-      font-size: 0.9rem;
-    }
-    .error-banner-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 6px;
-    }
-    .error-banner code {
-      background: rgba(0, 0, 0, 0.35);
-      padding: 2px 6px;
-      border-radius: 4px;
-      font-size: 0.82rem;
-    }
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    main {
-      max-width: 1440px;
-      margin: 0 auto;
-      padding: 18px;
-      display: grid;
-      grid-template-columns: 420px 1fr;
-      gap: 18px;
-    }
-    @media (max-width: 1024px) {
-      main { grid-template-columns: 1fr; }
-    }
-    .col {
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 16px;
-    }
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-    .card-header h2 {
-      margin: 0;
-      font-size: 1rem;
+      font-size: .8rem;
       font-weight: 650;
     }
-    .muted { color: var(--muted); font-size: 0.84rem; }
-    label {
-      display: block;
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-bottom: 4px;
-    }
-    input, select, textarea {
-      width: 100%;
-      padding: 8px 10px;
-      border-radius: 7px;
-      border: 1px solid var(--border);
-      background: var(--surface-alt);
-      color: var(--text);
-      font-size: 0.9rem;
-      font-family: inherit;
-    }
-    input:focus, select:focus, textarea:focus {
-      outline: 2px solid var(--primary);
-      border-color: transparent;
-    }
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .full { grid-column: 1 / -1; }
-    button, .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px 13px;
-      border-radius: 7px;
-      border: 1px solid transparent;
-      background: var(--primary);
-      color: #fff;
-      font-size: 0.86rem;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-    }
-    button:hover, .btn:hover { background: var(--primary-hover); }
-    button:disabled { opacity: 0.55; cursor: not-allowed; }
-    .btn-secondary {
-      background: var(--surface-alt);
-      border-color: var(--border);
-      color: var(--text);
-    }
-    .btn-secondary:hover { background: #1e293b; }
-    .btn-success { background: #16a34a; }
-    .btn-success:hover { background: #15803d; }
-    .btn-danger { background: #dc2626; }
-    .btn-danger:hover { background: #b91c1c; }
-    .btn-sm { padding: 5px 9px; font-size: 0.78rem; }
-
+    .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .badge.busy, .badge.warn { color: var(--warning); background: var(--warning-bg); }
+    .badge.err { color: var(--danger); background: var(--danger-bg); }
     .latest-preview {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border-radius: var(--radius-media);
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+    }
+    .latest-preview img, .thumb-card img {
+      display: block;
       width: 100%;
       aspect-ratio: 16 / 9;
-      background: var(--surface-alt);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 10px;
+      object-fit: contain;
     }
-    .latest-preview img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .preset-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
+    .latest-preview p { padding: 12px; text-align: center; }
+    #ytReviewImg { display: block; width: 100%; object-fit: contain; }
+    .preview-footer { margin-top: 13px; }
+    .preview-footer > div { flex: 1 1 180px; min-width: 0; }
+    details > summary { padding-block: 9px; font-weight: 650; cursor: pointer; }
+    details[open] > summary { margin-bottom: 8px; }
+    .advanced { margin-top: 20px; padding-block: 4px; }
+    .advanced[open] { padding-bottom: 18px; }
+    .preset-list, .preset-row, .thumb-body { display: grid; gap: 8px; }
     .preset-row {
-      display: flex;
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
-      gap: 6px;
-      background: var(--surface-alt);
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+    #bgEditorBox, .yt-preview-box {
+      padding: 12px;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px;
+      border-radius: var(--radius-control);
+      background: var(--surface-alt);
     }
-    .preset-info {
-      flex: 1;
-      min-width: 0;
-    }
-    .preset-info strong {
+    #bgCanvas {
       display: block;
-      font-size: 0.9rem;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 6px;
+      background: #080808;
+      cursor: grab;
+      touch-action: none;
     }
-    .preset-info span {
-      display: block;
-      font-size: 0.78rem;
-      color: var(--muted);
-      white-space: nowrap;
+    .gallery-section .card-header { margin-bottom: 8px; }
+    .gallery-strip {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 5px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--control-border) transparent;
+    }
+    .gallery-strip:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+    .gallery-strip .thumb-card { flex: 0 0 136px; }
+    .gallery-strip .thumb-body { gap: 5px; padding: 7px; grid-template-columns: minmax(0, 1fr); }
+    .gallery-strip .thumb-name {
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: .84rem;
     }
-
-    .gallery {
+    .gallery-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+      gap: 14px;
     }
     .thumb-card {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
       background: var(--surface-alt);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      border-radius: var(--radius-media);
     }
-    .thumb-card.is-latest {
-      border-color: var(--success);
-      box-shadow: 0 0 0 1px var(--success);
-    }
-    .thumb-card img {
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      object-fit: cover;
-      display: block;
-      background: #020617;
-    }
-    .thumb-body {
-      padding: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    .thumb-card.is-latest { border-color: var(--success); }
+    .thumb-card:not(.is-latest):has(.thumb-select:hover) { border-color: var(--primary); }
+    .thumb-card img { background: var(--bg); }
+    .thumb-select {
+      position: relative;
       flex: 1;
-    }
-    .thumb-name {
-      font-size: 0.84rem;
-      font-weight: 600;
-      word-break: break-all;
-    }
-    .thumb-actions {
-      display: flex;
-      gap: 6px;
-      margin-top: auto;
-    }
-    .thumb-actions button { flex: 1; }
-
-    .csv-table-wrap {
-      overflow-x: auto;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      margin-bottom: 10px;
-    }
-    table {
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 0;
       width: 100%;
-      border-collapse: collapse;
-      font-size: 0.84rem;
-    }
-    th, td {
-      padding: 6px 8px;
-      border-bottom: 1px solid var(--border);
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--text);
       text-align: left;
     }
-    th {
-      background: var(--surface-alt);
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 0.78rem;
+    .thumb-select:not(:disabled):hover { background: var(--primary-soft); }
+    .thumb-select:focus-visible { outline-offset: -3px; }
+    .thumb-select .badge { position: absolute; top: 6px; left: 6px; }
+    .thumb-body { width: 100%; padding: 12px; }
+    .thumb-name { font-weight: 650; }
+    .thumb-controls { padding: 0 12px 12px; }
+    .csv-table-wrap { overflow-x: auto; }
+    table { width: 100%; min-width: 700px; border-collapse: collapse; }
+    th, td { padding: 6px; border-bottom: 1px solid var(--border); text-align: left; }
+    th { font-size: .875rem; }
+    td input { min-height: 38px; font-size: .9rem; }
+    .csv-quantity { width: 82px; }
+    .youtube-video { overflow: hidden; }
+    .youtube-video .latest-preview { border: 0; border-radius: 12px; }
+    .youtube-video-caption { display: flex; gap: 12px; align-items: flex-start; padding-top: 12px; }
+    .youtube-video-caption > div { min-width: 0; }
+    .youtube-video-caption h3 { margin-bottom: 4px; font-size: 1.05rem; line-height: 1.4; }
+    .youtube-channel-avatar { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+    .yt-preview-box dl { margin: 0; }
+    .yt-preview-box dt { font-weight: 650; }
+    .yt-preview-box dd { margin: 0 0 7px; overflow-wrap: anywhere; }
+    .description-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    dialog {
+      width: min(calc(100% - 24px), 530px);
+      max-height: calc(100% - 24px);
+      padding: 18px;
+      color: var(--text);
     }
-    td input {
-      padding: 5px 7px;
-      font-size: 0.82rem;
+    dialog::backdrop { background: var(--dialog-scrim); }
+    @media (prefers-contrast: more) {
+      .card, dialog { outline: 1px solid var(--control-border); box-shadow: none; }
     }
-
-    .yt-preview-box {
-      background: var(--surface-alt);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px;
-      margin: 10px 0;
-      font-size: 0.85rem;
+    .panel-dialog {
+      max-height: min(88dvh, 760px);
+      padding: clamp(12px, 3vw, 20px);
     }
-    .yt-preview-box code {
-      display: block;
-      white-space: pre-wrap;
-      color: #cbd5e1;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 0.8rem;
-      margin-top: 4px;
+    .preset-dialog { width: min(calc(100% - 24px), 740px); }
+    .gallery-dialog { width: min(calc(100% - 24px), 980px); }
+    .panel-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
+    .panel-dialog .card-header { margin-bottom: 0; }
+    .gallery-dialog-tools {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: 10px;
     }
+    .gallery-dialog-tools > div { flex: 1 1 230px; min-width: 0; }
+    .dialog-scroll {
+      overflow: auto;
+      min-height: 0;
+      padding: 4px;
+    }
+    .dialog-notice { color: var(--success); }
+    .dialog-notice.error { color: var(--danger); }
+    .error-banner, .toast { padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-control); }
+    .error-banner { margin-bottom: 18px; background: var(--danger-bg); color: var(--danger); }
+    .error-banner details { overflow-wrap: anywhere; }
     .toast {
       position: fixed;
-      bottom: 18px;
-      right: 18px;
-      padding: 10px 16px;
-      border-radius: 8px;
-      background: #1e293b;
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 0.88rem;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
-      z-index: 50;
-      display: none;
+      inset: auto 16px 16px auto;
+      max-width: min(410px, calc(100% - 32px));
+      z-index: 10;
+      background: var(--surface);
+      color: var(--success);
+      box-shadow: var(--panel-shadow);
+      overflow-wrap: anywhere;
     }
-    .toast.show { display: block; }
-    .hidden { display: none !important; }
+    .toast.error { color: var(--danger); }
+    #tutorialDialog {
+      position: fixed;
+      inset: 16px auto auto 16px;
+      width: min(390px, calc(100% - 32px));
+      max-height: calc(100dvh - 32px);
+      margin: 0;
+      padding: 0;
+      overflow: visible;
+      background: transparent;
+      box-shadow: none;
+    }
+    #tutorialDialog::backdrop { background: transparent; }
+    .tutorial-focus {
+      position: fixed;
+      pointer-events: none;
+      border: 2px solid var(--primary);
+      border-radius: var(--radius);
+      box-shadow: 0 0 0 100vmax rgb(8 12 20 / 72%);
+    }
+    .tutorial-panel {
+      position: relative;
+      display: grid;
+      gap: 14px;
+      max-height: calc(100dvh - 32px);
+      overflow: auto;
+      padding: 20px;
+      border: 1px solid var(--control-border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--panel-shadow);
+    }
+    .tutorial-panel .actions { justify-content: space-between; }
+    .tutorial-panel progress { width: 100%; height: 5px; accent-color: var(--primary); }
+    .wallpaper-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+      gap: 14px;
+    }
+    .wallpaper-choice {
+      display: grid;
+      gap: 8px;
+      padding: 8px;
+      background: var(--surface-alt);
+      border: 2px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius-media);
+      text-align: left;
+    }
+    .wallpaper-choice:not(:disabled):hover { background: var(--primary-soft); }
+    .wallpaper-choice[aria-pressed="true"] { border-color: var(--primary); }
+    .wallpaper-choice img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 3px; }
+    .wallpaper-choice span { display: flex; justify-content: space-between; gap: 8px; }
+    .wallpaper-choice [aria-hidden] { color: var(--primary); }
+    @media (max-width: 720px) {
+      .card.gallery-section { scroll-margin-top: 145px; }
+      .two-columns { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    }
+    @media (max-width: 460px) {
+      .brand h1 { font-size: 1rem; overflow-wrap: anywhere; }
+      .brand-logo { width: 34px; height: 34px; }
+      .card.gallery-section { scroll-margin-top: 12px; }
+      .form-grid, .preset-row { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (pointer: coarse) {
+      button, .btn, td input, .navigation a { min-height: 44px; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <span>Automatic Thumbnail Bridge</span>
-      <span id="connBadge" class="badge">Connecting...</span>
-      <span id="statusBadge" class="badge">Ready</span>
-    </div>
-    <div class="header-actions">
-      <a class="btn btn-secondary btn-sm" href="/latest" target="_blank">Open /latest PNG</a>
-      <button class="btn-secondary btn-sm" onclick="refreshAll()">Refresh</button>
+  <img id="appWallpaper" class="app-wallpaper" src="{{ url_for('static', filename='fondo-bloom.jpg') }}" alt="" fetchpriority="high">
+  <header class="site-header">
+    <div class="shell header-top">
+      <div class="brand">
+        <img class="brand-logo" src="{{ url_for('static', filename='thumbnail-logo-orange.png') }}" width="40" height="40" alt="">
+        <h1>Miniaturas de directo</h1>
+      </div>
+      <div class="actions">
+        <span id="statusBadge" class="badge busy" role="status">Conectando…</span>
+        <button id="wallpaperButton" type="button" class="btn-secondary btn-sm" onclick="byId('wallpaperDialog').showModal()" aria-haspopup="dialog" aria-controls="wallpaperDialog">Elegir fondo</button>
+        <button id="tutorialButton" type="button" class="btn-secondary btn-sm" onclick="startTutorial()" aria-haspopup="dialog" aria-controls="tutorialDialog">Tutorial</button>
+        <button type="button" class="btn-secondary btn-sm" onclick="refreshCurrentView()">Actualizar vista</button>
+      </div>
     </div>
   </header>
 
-  <div id="errorBanner" class="error-banner hidden">
-    <div class="error-banner-head">
-      <strong id="errTitle">Action Failed</strong>
-      <div style="display:flex;gap:6px;">
-        <button class="btn-secondary btn-sm" onclick="testConnection()">Test Connection</button>
-        <button class="btn-danger btn-sm" onclick="clearError()">Dismiss</button>
+  <main class="shell">
+    <nav class="navigation" aria-label="Secciones">
+      <a href="#crear" aria-current="page">Miniatura</a>
+      <a href="#youtube">YouTube</a>
+    </nav>
+    <section id="errorBanner" class="error-banner hidden">
+      <div class="card-header">
+        <div role="alert">
+          <strong id="errTitle"></strong>
+          <p id="errHint"></p>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn-secondary btn-sm" onclick="testConnection()">Comprobar conexión</button>
+          <button type="button" class="btn-secondary btn-sm" onclick="clearError()">Cerrar aviso</button>
+        </div>
       </div>
-    </div>
-    <div id="errDetails"></div>
-  </div>
+      <details><summary>Detalles del error</summary><div id="errDetails"></div></details>
+    </section>
 
-  <main>
-    <!-- LEFT COLUMN -->
-    <div class="col">
-      <!-- Active /latest -->
-      <section class="card">
-        <div class="card-header">
-          <h2>Active /latest (ATEM / YouTube)</h2>
-          <span id="latestBadge" class="muted">Loading...</span>
+    <section id="galeria" class="card gallery-section" aria-labelledby="galleryHeading">
+      <div class="card-header">
+        <div class="actions">
+          <h2 id="galleryHeading">Galería</h2>
+          <span id="galleryCount" class="muted"></span>
         </div>
-        <div class="latest-preview">
-          <img id="latestImg" src="/latest" alt="Latest thumbnail" onerror="this.style.display='none'" />
-        </div>
-        <div id="latestMeta" class="muted">No thumbnail selected yet.</div>
-      </section>
+        <button id="galleryToggle" type="button" class="btn-sm" aria-haspopup="dialog" aria-controls="galleryDialog" onclick="openGallery()" disabled>Ver todas</button>
+      </div>
+      <div id="gallery" class="gallery-strip" role="group" aria-label="Miniaturas guardadas" tabindex="0"></div>
+    </section>
 
-      <!-- Presets -->
-      <section class="card">
-        <div class="card-header">
-          <h2>Presets</h2>
-          <button class="btn-secondary btn-sm" onclick="toggleAddPreset()">+ Add Preset</button>
-        </div>
+    <section data-view="crear" aria-label="Miniatura">
+      <div class="two-columns create-layout">
+        <section class="card">
+          <div class="card-header">
+            <h2>Crear miniatura</h2>
+            <button type="button" class="btn-sm" aria-haspopup="dialog" aria-controls="presetsDialog" onclick="openPresets()">Ver presets</button>
+          </div>
+          <form id="genForm" class="stack" onsubmit="generateThumbnail(event)">
+            <p id="loadedPreset" class="muted" role="status" hidden></p>
+            <fieldset class="form-section">
+              <legend>Texto</legend>
+              <div class="form-grid">
+                <div>
+                  <label for="gTitle">Título</label>
+                  <input id="gTitle" required placeholder="Culto de adoración">
+                </div>
+                <div>
+                  <label for="gSubtitle">Subtítulo</label>
+                  <input id="gSubtitle" required placeholder="Sábado en directo">
+                </div>
+              </div>
+            </fieldset>
+            <fieldset class="form-section">
+              <legend>Fondo</legend>
+              <div class="stack">
+                <div>
+                  <label for="gQuery">Palabra o enlace de la imagen</label>
+                  <input id="gQuery" value="iglesia" placeholder="iglesia o https://...">
+                </div>
+                <div>
+                  <label for="gBgFile">O subir una imagen</label>
+                  <input id="gBgFile" type="file" accept="image/*" onchange="onBgFileSelected(event)">
+                </div>
+                <div id="bgEditorBox" class="stack hidden">
+                  <div class="actions">
+                    <p class="muted">Arrastra la imagen para ajustar el encuadre.</p>
+                    <button type="button" class="btn-danger btn-sm" onclick="clearBgUpload()">Quitar imagen</button>
+                  </div>
+                  <canvas id="bgCanvas" width="640" height="360" aria-label="Vista previa del fondo"></canvas>
+                  <div class="form-grid">
+                    <div>
+                      <label for="bgZoom">Zoom (<span id="bgZoomVal">100</span> %)</label>
+                      <input id="bgZoom" type="range" min="100" max="250" value="100" oninput="renderBgCanvas()">
+                    </div>
+                    <div>
+                      <label for="bgBright">Brillo (<span id="bgBrightVal">100</span> %)</label>
+                      <input id="bgBright" type="range" min="50" max="150" value="100" oninput="renderBgCanvas()">
+                    </div>
+                    <div>
+                      <label for="bgContrast">Contraste (<span id="bgContrastVal">100</span> %)</label>
+                      <input id="bgContrast" type="range" min="50" max="150" value="100" oninput="renderBgCanvas()">
+                    </div>
+                    <div class="full actions">
+                      <button type="button" class="btn-secondary btn-sm" onclick="rotateBg(-90)">Girar a la izquierda</button>
+                      <button type="button" class="btn-secondary btn-sm" onclick="rotateBg(90)">Girar a la derecha</button>
+                      <button type="button" class="btn-secondary btn-sm" onclick="resetBgEditor()">Restablecer</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </fieldset>
+            <fieldset class="form-section">
+              <legend>Imagen final</legend>
+              <div class="form-grid">
+                <div>
+                  <label for="gFilename">Nombre de archivo</label>
+                  <input id="gFilename" placeholder="Automático">
+                </div>
+                <div>
+                  <label for="gVariations">Número de variantes</label>
+                  <input id="gVariations" type="number" min="1" max="10" value="1">
+                </div>
+                <div class="full">
+                  <label for="gWebsite">Web que aparece en la imagen</label>
+                  <input id="gWebsite" value="sagunto.adventista.es" placeholder="sagunto.adventista.es">
+                </div>
+              </div>
+            </fieldset>
+            <button id="generateButton" type="submit" disabled>Generar miniatura</button>
+            <p class="muted">La imagen generada pasará a ser la miniatura activa.</p>
+          </form>
+        </section>
 
-        <form id="addPresetForm" class="form-grid hidden" style="margin-bottom:12px;" onsubmit="savePreset(event)">
-          <div>
-            <label>Preset Key *</label>
-            <input id="pName" placeholder="e.g. sabado" required />
+        <section class="card">
+          <div class="card-header"><h2>Miniatura activa</h2></div>
+          <div class="latest-preview">
+            <img id="latestImg" alt="Miniatura activa" hidden>
+            <p id="latestEmpty" class="muted">Cargando miniatura…</p>
           </div>
-          <div>
-            <label>Filename</label>
-            <input id="pFilename" placeholder="miniatura_sabado" />
+          <div class="preview-footer">
+            <div>
+              <strong id="latestTitle"></strong>
+              <p id="latestMeta" class="muted"></p>
+            </div>
+            <a id="latestLink" class="btn btn-secondary btn-sm" href="/latest" target="_blank" rel="noopener" hidden>Abrir imagen</a>
           </div>
-          <div class="full">
-            <label>Title *</label>
-            <input id="pTitle" placeholder="Culto de Adoración" required />
+          <details id="latestCredits" class="muted" hidden>
+            <summary>Crédito del fondo</summary>
+            <p id="latestAttribution"></p>
+          </details>
+        </section>
+      </div>
+
+      <details id="batchSection" class="card advanced">
+        <summary>Generar por lotes</summary>
+        <div class="stack">
+          <p class="muted">Cada fila de la tabla genera una miniatura.</p>
+          <div class="actions">
+            <button type="button" class="btn-secondary" onclick="addCsvRow()">Añadir fila</button>
+            <button type="button" class="btn-secondary" onclick="saveCsv(false)">Guardar tabla</button>
+            <button id="runBatchButton" type="button" onclick="saveCsv(true)" disabled>Guardar y generar</button>
           </div>
-          <div>
-            <label>Subtitle</label>
-            <input id="pSubtitle" placeholder="Sábado en Directo" />
+          <div class="csv-table-wrap">
+            <table aria-label="Miniaturas para el lote">
+              <thead>
+                <tr>
+                  <th scope="col">Archivo</th>
+                  <th scope="col">Título</th>
+                  <th scope="col">Subtítulo</th>
+                  <th scope="col">Fondo</th>
+                  <th scope="col" class="csv-quantity">Variantes</th>
+                  <th scope="col">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="csvBody"></tbody>
+            </table>
           </div>
-          <div>
-            <label>Background Query / URL</label>
-            <input id="pQuery" placeholder="iglesia" value="default" />
-          </div>
-          <div>
-            <label>Variations</label>
-            <input id="pVariations" type="number" min="1" max="10" value="1" />
-          </div>
-          <div style="display:flex;align-items:flex-end;gap:6px;">
-            <button type="submit" class="btn-success" style="flex:1;">Save Preset</button>
+        </div>
+      </details>
+    </section>
+
+    <dialog id="presetsDialog" class="panel-dialog preset-dialog" aria-labelledby="presetsDialogHeading">
+      <div class="card-header">
+        <h2 id="presetsDialogHeading">Presets guardados</h2>
+        <form method="dialog">
+          <button type="submit" class="btn-secondary btn-sm">Cerrar</button>
+        </form>
+      </div>
+      <div class="actions">
+        <button id="newPresetButton" type="button" onclick="openPresetForm()"><span aria-hidden="true">+</span> Nuevo preset</button>
+      </div>
+      <p id="presetNotice" class="dialog-notice" role="status" hidden></p>
+      <div class="dialog-scroll">
+        <form id="presetForm" class="stack hidden" onsubmit="savePreset(event)">
+          <h3 id="presetFormTitle">Nuevo preset</h3>
+          <fieldset class="form-section">
+            <legend>Texto</legend>
+            <div class="form-grid">
+              <div class="full">
+                <label for="pName">Identificador del preset</label>
+                <input id="pName" placeholder="sabado" required>
+              </div>
+              <div>
+                <label for="pTitle">Título</label>
+                <input id="pTitle" placeholder="Culto de adoración" required>
+              </div>
+              <div>
+                <label for="pSubtitle">Subtítulo</label>
+                <input id="pSubtitle" required placeholder="Sábado en directo">
+              </div>
+            </div>
+          </fieldset>
+          <fieldset class="form-section">
+            <legend>Fondo</legend>
+            <label for="pQuery">Palabra o enlace de la imagen</label>
+            <input id="pQuery" placeholder="iglesia o https://...">
+          </fieldset>
+          <fieldset class="form-section">
+            <legend>Imagen final</legend>
+            <div class="form-grid">
+              <div>
+                <label for="pFilename">Nombre de archivo</label>
+                <input id="pFilename" placeholder="Automático">
+              </div>
+              <div>
+                <label for="pVariations">Número de variantes</label>
+                <input id="pVariations" type="number" min="1" max="10" value="1">
+              </div>
+              <div class="full">
+                <label for="pWebsite">Web que aparece en la imagen</label>
+                <input id="pWebsite" value="sagunto.adventista.es" placeholder="sagunto.adventista.es">
+              </div>
+            </div>
+          </fieldset>
+          <div class="actions">
+            <button id="savePresetButton" type="submit">Crear preset</button>
+            <button type="button" class="btn-secondary" onclick="closePresetForm()">Cancelar</button>
           </div>
         </form>
-
         <div id="presetList" class="preset-list"></div>
-      </section>
+      </div>
+    </dialog>
 
-      <!-- Custom Generate -->
-      <section class="card">
-        <div class="card-header">
-          <h2>Quick Generate</h2>
+    <section data-view="youtube" class="two-columns" aria-label="YouTube" hidden>
+      <section class="card stack">
+        <div class="actions">
+          <h2>Actualizar un directo</h2>
+          <span id="ytStatusBadge" class="badge warn">Comprobando…</span>
         </div>
-        <form id="genForm" class="form-grid" onsubmit="generateCustom(event)">
-          <div class="full">
-            <label>Title *</label>
-            <input id="gTitle" required placeholder="Culto de Adoración" />
+        <div id="ytAuthRow" class="stack hidden">
+          <p id="ytAuthHint" class="muted"></p>
+          <div class="actions">
+            <a id="ytConnectBtn" class="btn btn-secondary btn-sm" href="/youtube/auth/start?redirect=1" target="_blank" rel="noopener">Conectar YouTube</a>
+            <button id="ytDisconnectBtn" type="button" class="btn-danger btn-sm hidden" onclick="disconnectYouTube()">Desconectar</button>
           </div>
-          <div class="full">
-            <label>Subtitle</label>
-            <input id="gSubtitle" placeholder="Sábado en Directo" />
-          </div>
+        </div>
+        <div class="stack">
           <div>
-            <label>Background Query / URL</label>
-            <input id="gQuery" value="iglesia" placeholder="iglesia or https://..." />
+            <label for="ytBroadcastId">Video ID (opcional)</label>
+            <input id="ytBroadcastId" autocomplete="off" spellcheck="false" placeholder="Introduce el ID del directo" aria-describedby="ytBroadcastHint" oninput="invalidateYouTubePreview()">
           </div>
+          <p id="ytBroadcastHint" class="muted">Déjalo vacío para seleccionar automáticamente un directo activo o próximo del canal.</p>
+        </div>
+        <div>
+          <label for="ytTitleInput">Cambiar título</label>
+          <input id="ytTitleInput" placeholder="Usar título de la miniatura" oninput="invalidateYouTubePreview()">
+        </div>
+        <div class="stack">
+          <button id="ytTestButton" class="btn-secondary" type="button" onclick="testYouTubeConnection()">Probar conexión con el directo</button>
+          <p id="ytConnectionResult" class="muted" role="status">Comprueba el directo antes de actualizarlo.</p>
+          <button id="ytReviewButton" type="button" onclick="reviewYouTube()" disabled>Actualizar cambios en el directo</button>
+        </div>
+      </section>
+
+      <section class="card stack">
+        <h2>Vista previa de YouTube</h2>
+        <figure class="youtube-video">
+        <div class="latest-preview">
+          <img id="ytPreviewImg" alt="Miniatura que se enviaría a YouTube" hidden>
+          <p id="ytPreviewEmpty" class="muted">Cargando miniatura…</p>
+        </div>
+        <figcaption class="youtube-video-caption">
+          <span id="ytChannelAvatar" class="youtube-channel-avatar" aria-hidden="true">C</span>
           <div>
-            <label>Or Upload Background</label>
-            <input id="gBgFile" type="file" accept="image/*" onchange="onBgFileSelected(event)" style="padding:5px;" />
+            <h3 id="ytPreviewTitle">—</h3>
+            <p id="ytPreviewChannel" class="muted">Canal de YouTube</p>
+            <p class="muted">Vista previa de la publicación</p>
           </div>
-          <div id="bgEditorBox" class="full hidden" style="background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:10px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <span class="muted"><strong>Background Editor</strong> (drag image to pan)</span>
-              <button type="button" class="btn-danger btn-sm" onclick="clearBgUpload()">Remove Upload</button>
-            </div>
-            <canvas id="bgCanvas" width="640" height="360" style="width:100%;aspect-ratio:16/9;border-radius:6px;background:#020617;cursor:grab;display:block;margin-bottom:8px;"></canvas>
-            <div class="form-grid" style="gap:8px;">
-              <div>
-                <label>Zoom (<span id="bgZoomVal">100</span>%)</label>
-                <input id="bgZoom" type="range" min="100" max="250" value="100" oninput="renderBgCanvas()" />
-              </div>
-              <div>
-                <label>Brightness (<span id="bgBrightVal">100</span>%)</label>
-                <input id="bgBright" type="range" min="50" max="150" value="100" oninput="renderBgCanvas()" />
-              </div>
-              <div>
-                <label>Contrast (<span id="bgContrastVal">100</span>%)</label>
-                <input id="bgContrast" type="range" min="50" max="150" value="100" oninput="renderBgCanvas()" />
-              </div>
-              <div style="display:flex;align-items:flex-end;gap:6px;">
-                <button type="button" class="btn-secondary btn-sm" onclick="rotateBg(-90)">↺ -90°</button>
-                <button type="button" class="btn-secondary btn-sm" onclick="rotateBg(90)">↻ +90°</button>
-                <button type="button" class="btn-secondary btn-sm" onclick="resetBgEditor()">Reset</button>
-              </div>
-            </div>
-          </div>
-          <div>
-            <label>Filename</label>
-            <input id="gFilename" placeholder="optional" />
-          </div>
-          <div>
-            <label>Variations</label>
-            <input id="gVariations" type="number" min="1" max="10" value="1" />
-          </div>
-          <div style="display:flex;align-items:flex-end;">
-            <button type="submit" style="width:100%;">Generate</button>
-          </div>
-        </form>
+        </figcaption>
+        </figure>
       </section>
-    </div>
-
-    <!-- RIGHT COLUMN -->
-    <div class="col">
-      <!-- Gallery -->
-      <section class="card">
-        <div class="card-header">
-          <h2>Generated Thumbnails</h2>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span id="galleryCount" class="muted">0 images</span>
-            <button class="btn-secondary btn-sm" onclick="runGarbageCollector()">Clean Old (GC)</button>
-          </div>
-        </div>
-        <div id="gallery" class="gallery"></div>
-      </section>
-
-      <!-- CSV Batch -->
-      <section class="card">
-        <div class="card-header">
-          <h2>Batch CSV (miniaturas.csv)</h2>
-          <div style="display:flex;gap:6px;">
-            <button class="btn-secondary btn-sm" onclick="addCsvRow()">+ Add Row</button>
-            <button class="btn-secondary btn-sm" onclick="saveCsv(false)">Save CSV</button>
-            <button class="btn-success btn-sm" onclick="saveCsv(true)">Save &amp; Run Batch</button>
-          </div>
-        </div>
-        <div class="csv-table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Filename</th>
-                <th>Title</th>
-                <th>Subtitle</th>
-                <th>Query / URL</th>
-                <th style="width:70px;">Vars</th>
-                <th style="width:45px;"></th>
-              </tr>
-            </thead>
-            <tbody id="csvBody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- YouTube Livestream Integration -->
-      <section class="card">
-        <div class="card-header">
-          <h2>YouTube Livestream Sync (Optional)</h2>
-          <span id="ytStatusBadge" class="badge warn">Checking...</span>
-        </div>
-
-        <div id="ytAuthRow" class="hidden" style="margin-bottom:10px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
-          <a id="ytConnectBtn" class="btn btn-secondary btn-sm" href="/youtube/auth/start?redirect=1" target="_blank">Connect YouTube Account</a>
-          <button id="ytDisconnectBtn" class="btn-danger btn-sm hidden" onclick="disconnectYouTube()">Disconnect</button>
-          <span id="ytAuthHint" class="muted"></span>
-        </div>
-
-        <div class="form-grid">
-          <div class="full">
-            <label>Livestream Broadcast (auto-detects upcoming/active if blank)</label>
-            <div style="display:flex;gap:6px;">
-              <select id="ytBroadcastSelect" onchange="onSelectBroadcast()">
-                <option value="">-- Auto-detect active / upcoming --</option>
-              </select>
-              <input id="ytBroadcastId" placeholder="Or paste Broadcast / Video ID" style="max-width:220px;" />
-            </div>
-          </div>
-          <div class="full">
-            <label>Title Override (default: [title] - [subtitle] from /latest)</label>
-            <input id="ytTitleInput" placeholder="Auto-generated from /latest" />
-          </div>
-        </div>
-
-        <div class="yt-preview-box">
-          <div><strong>Pregenerated Title:</strong> <span id="ytPreviewTitle">-</span></div>
-          <div style="margin-top:6px;"><strong>Miniatura License (bottom of description):</strong> <span id="ytPreviewLicense">-</span></div>
-          <div id="ytPreviewDescWrap" class="hidden" style="margin-top:6px;">
-            <strong>Description Preview:</strong>
-            <code id="ytPreviewDesc"></code>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:8px;justify-content:flex-end;">
-          <button class="btn-secondary" onclick="loadYouTubePreview()">Refresh Preview</button>
-          <button class="btn-success" onclick="pushToYouTube()">Update YouTube Livestream</button>
-        </div>
-      </section>
-    </div>
+    </section>
   </main>
 
-  <div id="toast" class="toast"></div>
+  <dialog id="galleryDialog" class="panel-dialog gallery-dialog" aria-labelledby="galleryDialogHeading">
+    <div class="card-header">
+      <h2 id="galleryDialogHeading">Todas las miniaturas</h2>
+      <form method="dialog">
+        <button type="submit" class="btn-secondary btn-sm">Cerrar</button>
+      </form>
+    </div>
+    <div class="gallery-dialog-tools">
+      <div>
+        <label for="gallerySearch">Buscar miniaturas</label>
+        <input id="gallerySearch" type="search" placeholder="Título, subtítulo o nombre de archivo" autofocus oninput="renderGalleryResults(true)">
+      </div>
+      <button type="button" class="btn-secondary" onclick="runGarbageCollector()">Limpiar miniaturas antiguas</button>
+    </div>
+    <p id="galleryResultsCount" class="muted" role="status"></p>
+    <p id="galleryNotice" class="dialog-notice" role="status" hidden></p>
+    <div class="dialog-scroll">
+      <div id="galleryResults" class="gallery-grid"></div>
+    </div>
+  </dialog>
+
+  <dialog id="wallpaperDialog" class="panel-dialog preset-dialog" aria-labelledby="wallpaperHeading">
+    <div class="card-header">
+      <h2 id="wallpaperHeading">Fondo de la página</h2>
+      <form method="dialog"><button type="submit" class="btn-secondary btn-sm">Cerrar</button></form>
+    </div>
+    <div class="dialog-scroll">
+      <div class="wallpaper-grid">
+        {% for filename, name in [
+          ('fondo-bloom.jpg', 'Bloom'),
+          ('fondo-montana.jpg', 'Montaña'),
+          ('2115.jpg', 'Fondo 2115'),
+          ('2124.jpg', 'Ornamentos'),
+          ('2121.jpg', 'Madera'),
+          ('2117.jpg', 'Nebulosa azul'),
+          ('2116.jpg', 'Estrellas'),
+          ('2112.jpg', 'Geometría')
+        ] %}
+        <button type="button" class="wallpaper-choice" data-wallpaper="{{ filename }}" aria-pressed="{{ 'true' if filename == 'fondo-bloom.jpg' else 'false' }}" onclick="chooseWallpaper(this)">
+          <img src="{{ url_for('static', filename=filename) }}" alt="" loading="lazy">
+          <span>{{ name }}<span aria-hidden="true" {{ 'hidden' if filename != 'fondo-bloom.jpg' else '' }}>Activo</span></span>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+    <p id="wallpaperNotice" class="muted" role="status">Elige una imagen para aplicarla al fondo de la página.</p>
+  </dialog>
+
+  <dialog id="tutorialDialog" aria-labelledby="tutorialTitle" aria-describedby="tutorialText">
+    <div id="tutorialFocus" class="tutorial-focus" aria-hidden="true"></div>
+    <div class="tutorial-panel">
+      <div class="actions">
+        <span id="tutorialStep" class="muted"></span>
+        <button type="button" class="btn-secondary btn-sm" onclick="finishTutorial()">Saltar tutorial</button>
+      </div>
+      <progress id="tutorialProgress" aria-label="Progreso del tutorial"></progress>
+      <div aria-live="polite" aria-atomic="true">
+        <h2 id="tutorialTitle"></h2>
+        <p id="tutorialText"></p>
+      </div>
+      <div class="actions">
+        <button id="tutorialBack" type="button" class="btn-secondary" onclick="moveTutorial(-1)">Anterior</button>
+        <button id="tutorialNext" type="button" onclick="moveTutorial(1)">Siguiente</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="ytReviewDialog" aria-labelledby="ytReviewHeading">
+    <div class="stack">
+      <h2 id="ytReviewHeading">Confirmar actualización de YouTube</h2>
+      <p><strong>Directo:</strong> <span id="ytReviewBroadcast"></span></p>
+      <p><strong>Título:</strong> <span id="ytReviewTitle"></span></p>
+      <img id="ytReviewImg" class="latest-preview" alt="Miniatura que se publicará">
+      <div class="actions">
+        <form method="dialog"><button class="btn-secondary" autofocus>Cancelar</button></form>
+        <button id="ytPublishButton" type="button" onclick="pushToYouTube()">Actualizar directo</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast hidden" role="status"></div>
 
   <script>
+    const byId = id => document.getElementById(id);
+    const views = [...document.querySelectorAll("[data-view]")];
+    const navLinks = [...document.querySelectorAll(".navigation a")];
+    const presetsDialog = byId("presetsDialog");
+    const galleryDialog = byId("galleryDialog");
+    let galleryItems = [];
+    let thumbnailActivationPending = false;
     let csvRows = [];
+    let activeView = "";
+    let generationPending = false;
+    let serverBusy = false;
+    let toastTimer;
 
-    function toast(msg, isError = false) {
-      const el = document.getElementById("toast");
-      el.textContent = msg;
-      el.style.borderColor = isError ? "#ef4444" : "#22c55e";
-      el.classList.add("show");
-      setTimeout(() => el.classList.remove("show"), 3500);
+    function toast(message, isError = false) {
+      const el = byId("toast");
+      el.textContent = message;
+      el.classList.toggle("error", isError);
+      el.classList.remove("hidden");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add("hidden"), 4500);
+    }
+
+    function dialogMessage(dialog, message, isError = false) {
+      if (!dialog.open) {
+        toast(message, isError);
+        return;
+      }
+      const notice = dialog.querySelector(".dialog-notice");
+      notice.textContent = message;
+      notice.classList.toggle("error", isError);
+      notice.hidden = false;
     }
 
     function clearError() {
-      document.getElementById("errorBanner").classList.add("hidden");
+      byId("errorBanner").classList.add("hidden");
     }
 
     function showError(action, endpoint, err) {
-      const banner = document.getElementById("errorBanner");
-      const titleEl = document.getElementById("errTitle");
-      const detailsEl = document.getElementById("errDetails");
-
-      const msg = (err && err.message) ? err.message : String(err || "Unknown error");
-      const timeStr = new Date().toLocaleTimeString();
-      let hint = "";
-
+      const banner = byId("errorBanner");
+      const message = err.message || String(err);
+      const offline = /failed to fetch|networkerror|load failed/i.test(message);
+      byId("errTitle").textContent = "No se pudo " + action;
+      byId("errHint").textContent = offline
+        ? "Comprueba que el programa esté en marcha y vuelve a intentarlo."
+        : "Puedes ver el motivo en los detalles.";
       if (window.location.protocol === "file:") {
-        hint = "You opened this HTML file directly from disk (file://). Open it from the running server instead, e.g. http://localhost:5000/ui";
-      } else if (/failed to fetch|networkerror|load failed/i.test(msg)) {
-        hint = `Browser could not reach ${window.location.origin}${endpoint}. Check that the Thumbnail Bridge service is running, not restarting, and reachable on the network.`;
+        byId("errHint").textContent = "Abre la página desde el programa, por ejemplo en http://localhost:5001/ui.";
       }
-
-      titleEl.textContent = `Failed: ${action} (${timeStr})`;
-      detailsEl.innerHTML = `
-        <div><strong>Endpoint:</strong> <code>${escapeHtml(endpoint)}</code></div>
-        <div style="margin-top:4px;"><strong>Error:</strong> ${escapeHtml(msg)}</div>
-        ${hint ? `<div style="margin-top:6px;color:#fde68a;"><strong>Troubleshooting Tip:</strong> ${escapeHtml(hint)}</div>` : ""}
-      `;
+      byId("errDetails").textContent = endpoint + " — " + message;
+      banner.querySelector("details").open = false;
       banner.classList.remove("hidden");
-      toast(`${action} failed: ${msg}`, true);
     }
 
-    async function testConnection() {
-      const conn = document.getElementById("connBadge");
-      try {
-        const h = await api("/health", {}, "Health Check");
-        conn.textContent = `Online (v${h.version})`;
-        conn.className = "badge";
-        clearError();
-        toast(`Server online! Unsplash: ${h.unsplash_configured ? "API Key" : "Curated"}, Font: ${h.font_loaded ? "OK" : "Fallback"}`);
-      } catch (err) {
-        conn.textContent = "Offline";
-        conn.className = "badge err";
-      }
-    }
-
-    async function api(url, opts = {}, actionLabel = "") {
-      const method = (opts.method || "GET").toUpperCase();
-      const endpoint = `${method} ${url}`;
-      let res;
-      try {
-        res = await fetch(url, opts);
-      } catch (networkErr) {
-        if (actionLabel) showError(actionLabel, url, networkErr);
-        throw networkErr;
-      }
-
-      const text = await res.text();
-      let data = {};
+    async function api(url, options = {}) {
+      const response = await fetch(url, options);
+      const text = await response.text();
+      let data;
       try {
         data = text ? JSON.parse(text) : {};
-      } catch (_) {
-        data = { error: text ? text.slice(0, 200) : `Non-JSON response (HTTP ${res.status})` };
+      } catch {
+        throw new Error("Respuesta inesperada (HTTP " + response.status + ").");
       }
-
-      if (!res.ok) {
-        const err = new Error(data.error || `HTTP ${res.status} ${res.statusText}`);
-        if (actionLabel) showError(actionLabel, url, err);
-        throw err;
+      if (!response.ok) {
+        const error = new Error(data.error || "HTTP " + response.status);
+        error.status = response.status;
+        throw error;
       }
       return data;
     }
 
-    async function waitForJob(actionLabel, endpoint) {
-      const badge = document.getElementById("statusBadge");
-      badge.textContent = "Generating...";
-      badge.className = "badge busy";
+    function postJson(url, data) {
+      return api(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+    }
 
-      for (let i = 0; i < 240; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        const s = await api("/status", {}, actionLabel);
-        if (!s.busy) {
-          if (s.state === "error" && s.last_error) {
-            const err = new Error(s.last_error);
-            showError(actionLabel, endpoint, err);
-            throw err;
-          }
-          badge.textContent = "Ready";
-          badge.className = "badge";
-          return s;
-        }
-      }
-      const timeoutErr = new Error("Generation timed out after 120 seconds.");
-      showError(actionLabel, endpoint, timeoutErr);
-      throw timeoutErr;
+    function setStatus(text, variant = "") {
+      const badge = byId("statusBadge");
+      badge.textContent = text;
+      badge.className = variant ? "badge " + variant : "badge";
+    }
+
+    function updateGenerationForm() {
+      byId("generateButton").disabled = generationPending || serverBusy;
+      byId("runBatchButton").disabled = generationPending || serverBusy;
     }
 
     async function loadStatus() {
-      const conn = document.getElementById("connBadge");
-      const badge = document.getElementById("statusBadge");
       try {
-        const [h, s] = await Promise.all([api("/health"), api("/status")]);
-        conn.textContent = `Online (v${h.version})`;
-        conn.className = "badge";
-        if (s.busy) {
-          badge.textContent = "Generating...";
-          badge.className = "badge busy";
-        } else if (s.state === "error" && s.last_error) {
-          badge.textContent = "Last Job Error";
-          badge.className = "badge err";
-        } else {
-          badge.textContent = "Ready";
-          badge.className = "badge";
-        }
-      } catch (e) {
-        conn.textContent = "Offline";
-        conn.className = "badge err";
-        badge.textContent = "Unreachable";
-        badge.className = "badge err";
+        const status = await api("/status");
+        serverBusy = status.busy;
+        if (serverBusy || generationPending) setStatus("Generando…", "busy");
+        else if (status.state === "error") setStatus("Última generación fallida", "err");
+        else setStatus("Listo");
+      } catch {
+        serverBusy = false;
+        setStatus("Sin conexión", "err");
+      } finally {
+        updateGenerationForm();
       }
+    }
+
+    async function testConnection() {
+      try {
+        await api("/health");
+        clearError();
+        await loadStatus();
+        toast("Conexión restablecida.");
+      } catch (err) {
+        setStatus("Sin conexión", "err");
+        showError("conectar con el programa", "/health", err);
+      }
+    }
+
+    function showImage(img, empty, src, loadMessage = "Cargando imagen…") {
+      img.hidden = true;
+      empty.hidden = false;
+      img.onload = null;
+      img.onerror = null;
+      if (!src) {
+        img.removeAttribute("src");
+        empty.textContent = loadMessage;
+        return;
+      }
+      empty.textContent = loadMessage;
+      img.onload = () => {
+        img.hidden = false;
+        empty.hidden = true;
+      };
+      img.onerror = () => { empty.textContent = "No se pudo cargar la imagen."; };
+      img.src = src;
+    }
+
+    function thumbnailUrl(filename, revision = Date.now()) {
+      return "/thumbnails/" + encodeURIComponent(filename) + "?t=" + encodeURIComponent(revision);
+    }
+
+    function thumbnailTitle(item) {
+      return item.title || item.filename.replace(/\.png$/i, "").replace(/_/g, " ");
     }
 
     async function loadLatest() {
-      const img = document.getElementById("latestImg");
-      const badge = document.getElementById("latestBadge");
-      const meta = document.getElementById("latestMeta");
+      const img = byId("latestImg");
+      const empty = byId("latestEmpty");
+      const title = byId("latestTitle");
+      const meta = byId("latestMeta");
+      const link = byId("latestLink");
+      const credits = byId("latestCredits");
       try {
         const info = await api("/latest?format=json");
-        img.style.display = "block";
-        img.src = `/latest?t=${Date.now()}`;
-        badge.textContent = info.pinned ? `Pinned: ${info.filename}` : `Newest: ${info.filename}`;
-        meta.innerHTML = `
-          <div><strong>${info.title || "(no title)"}</strong>${info.subtitle ? " — " + info.subtitle : ""}</div>
-          <div style="margin-top:4px;">License: ${info.attribution || "N/A"}</div>
-        `;
-      } catch (e) {
-        img.style.display = "none";
-        badge.textContent = "None";
-        meta.textContent = "No thumbnails generated yet.";
+        showImage(img, empty, thumbnailUrl(info.filename));
+        title.textContent = thumbnailTitle(info);
+        meta.textContent = info.subtitle || "";
+        byId("latestAttribution").textContent = info.attribution || "";
+        credits.hidden = !info.attribution;
+        link.hidden = false;
+      } catch (err) {
+        const message = err.status === 404 ? "Aún no hay miniaturas. Genera la primera." : "No se pudo consultar la miniatura activa.";
+        showImage(img, empty, "", message);
+        title.textContent = "";
+        meta.textContent = "";
+        credits.hidden = true;
+        link.hidden = true;
       }
+    }
+
+    function makeButton(label, classes, action) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = classes;
+      button.textContent = label;
+      button.addEventListener("click", action);
+      return button;
+    }
+
+    function showPresetList() {
+      byId("presetForm").classList.add("hidden");
+      byId("presetList").hidden = false;
+      byId("newPresetButton").hidden = false;
+    }
+
+    function openPresets() {
+      showPresetList();
+      byId("presetNotice").hidden = true;
+      byId("presetList").textContent = "Cargando presets…";
+      presetsDialog.showModal();
+      loadPresets();
+    }
+
+    function showPresetError(action, endpoint, err) {
+      if (presetsDialog.open) dialogMessage(presetsDialog, "No se pudo " + action + ". " + err.message, true);
+      else showError(action, endpoint, err);
     }
 
     async function loadPresets() {
-      const data = await api("/presets");
-      const list = document.getElementById("presetList");
-      list.innerHTML = "";
-      for (const p of data.presets) {
-        const row = document.createElement("div");
-        row.className = "preset-row";
-        row.innerHTML = `
-          <div class="preset-info">
-            <strong>${escapeHtml(p.name)}</strong>
-            <span>${escapeHtml(p.title)}${p.subtitle ? " — " + escapeHtml(p.subtitle) : ""}</span>
-          </div>
-          <button class="btn-sm" onclick="runPreset('${escapeAttr(p.name)}')">Generate</button>
-          <button class="btn-secondary btn-sm" onclick='fillForm(${JSON.stringify(p)})'>Edit</button>
-          <button class="btn-danger btn-sm" onclick="deletePreset('${escapeAttr(p.name)}')">✕</button>
-        `;
-        list.appendChild(row);
-      }
-    }
-
-    function toggleAddPreset() {
-      document.getElementById("addPresetForm").classList.toggle("hidden");
-    }
-
-    function fillForm(p) {
-      document.getElementById("gTitle").value = p.title || "";
-      document.getElementById("gSubtitle").value = p.subtitle || "";
-      document.getElementById("gQuery").value = p.query || "default";
-      document.getElementById("gFilename").value = p.filename || "";
-      document.getElementById("gVariations").value = p.variations || 1;
-      toast(`Loaded preset '${p.name}' into form`);
-    }
-
-    async function savePreset(e) {
-      e.preventDefault();
+      const list = byId("presetList");
       try {
-        await api("/presets", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: document.getElementById("pName").value,
-            filename: document.getElementById("pFilename").value,
-            title: document.getElementById("pTitle").value,
-            subtitle: document.getElementById("pSubtitle").value,
-            query: document.getElementById("pQuery").value,
-            variations: parseInt(document.getElementById("pVariations").value || "1", 10),
-          }),
-        });
-        document.getElementById("addPresetForm").reset();
-        document.getElementById("addPresetForm").classList.add("hidden");
-        toast("Preset saved!");
-        await loadPresets();
+        const { presets } = await api("/presets");
+        list.replaceChildren();
+        for (const preset of presets) {
+          const row = document.createElement("div");
+          row.className = "preset-row";
+          const info = document.createElement("div");
+          const title = document.createElement("strong");
+          const subtitle = document.createElement("p");
+          title.textContent = preset.title || preset.name;
+          subtitle.className = "muted";
+          subtitle.textContent = [preset.subtitle, preset.name].filter(Boolean).join(" · ");
+          info.append(title, subtitle);
+          const actions = document.createElement("div");
+          actions.className = "actions";
+          actions.append(
+            makeButton("Cargar preset", "btn-sm", () => fillForm(preset)),
+            makeButton("Editar", "btn-secondary btn-sm", () => openPresetForm(preset)),
+            makeButton("Eliminar", "btn-danger btn-sm", () => deletePreset(preset)),
+          );
+          row.append(info, actions);
+          list.append(row);
+        }
+        if (!presets.length) list.textContent = "Aún no hay presets guardados.";
+        return true;
       } catch (err) {
-        toast(err.message, true);
+        list.replaceChildren();
+        showPresetError("cargar los presets", "/presets", err);
+        return false;
       }
     }
 
-    async function deletePreset(name) {
-      if (!confirm(`Delete preset '${name}'?`)) return;
-      try {
-        await api(`/presets/${encodeURIComponent(name)}`, { method: "DELETE" });
-        toast(`Preset '${name}' deleted`);
-        await loadPresets();
-      } catch (err) {
-        toast(err.message, true);
+    function openPresetForm(preset) {
+      const submit = byId("savePresetButton");
+      if (submit.disabled) return;
+      const form = byId("presetForm");
+      form.reset();
+      byId("presetNotice").hidden = true;
+      byId("presetList").hidden = true;
+      byId("newPresetButton").hidden = true;
+      byId("presetFormTitle").textContent = preset ? "Editar preset: " + (preset.title || preset.name) : "Nuevo preset";
+      submit.textContent = preset ? "Guardar cambios" : "Crear preset";
+      byId("pName").readOnly = Boolean(preset);
+      if (preset) {
+        byId("pName").value = preset.name;
+        byId("pFilename").value = preset.filename || "";
+        byId("pTitle").value = preset.title || "";
+        byId("pSubtitle").value = preset.subtitle || "";
+        byId("pQuery").value = preset.query || "";
+        byId("pVariations").value = preset.variations || 1;
+        byId("pWebsite").value = preset.site_url || "sagunto.adventista.es";
       }
+      form.classList.remove("hidden");
+      byId(preset ? "pTitle" : "pName").focus();
     }
 
-    async function runPreset(name) {
-      const endpoint = `/${encodeURIComponent(name)}/generate`;
+    function closePresetForm() {
+      showPresetList();
+      byId("newPresetButton").focus();
+    }
+
+    function fillForm(preset) {
+      clearBgUpload();
+      byId("gTitle").value = preset.title || "";
+      byId("gSubtitle").value = preset.subtitle || "";
+      byId("gQuery").value = preset.query || "";
+      byId("gFilename").value = preset.filename || "";
+      byId("gVariations").value = preset.variations || 1;
+      byId("gWebsite").value = preset.site_url || "sagunto.adventista.es";
+      const loaded = byId("loadedPreset");
+      loaded.textContent = "Preset cargado: " + (preset.title || preset.name);
+      loaded.hidden = false;
+      presetsDialog.close();
+      byId("gTitle").focus();
+    }
+
+    async function savePreset(event) {
+      event.preventDefault();
+      const saveButton = byId("savePresetButton");
+      if (saveButton.disabled) return;
+      saveButton.disabled = true;
       clearError();
       try {
-        toast(`Generating '${name}'...`);
-        await api(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ async: true }),
-        }, `Generate preset '${name}'`);
-        await waitForJob(`Generate preset '${name}'`, endpoint);
-        toast(`Preset '${name}' generated!`);
-        await refreshThumbnailsAndYouTube();
+        await postJson("/presets", {
+          name: byId("pName").value,
+          filename: byId("pFilename").value,
+          title: byId("pTitle").value,
+          subtitle: byId("pSubtitle").value,
+          query: byId("pQuery").value,
+          variations: Number(byId("pVariations").value || 1),
+          site_url: byId("pWebsite").value.trim(),
+        });
+        closePresetForm();
+        if (await loadPresets()) dialogMessage(presetsDialog, "Preset guardado.");
       } catch (err) {
-        // Error banner already shown by api()/waitForJob()
+        showPresetError("guardar el preset", "/presets", err);
+      } finally {
+        saveButton.disabled = false;
       }
+    }
+
+    async function deletePreset(preset) {
+      if (!confirm("¿Eliminar el preset «" + (preset.title || preset.name) + "»?")) return;
+      const endpoint = "/presets/" + encodeURIComponent(preset.name);
+      clearError();
+      try {
+        await api(endpoint, { method: "DELETE" });
+        if (await loadPresets()) {
+          byId("newPresetButton").focus();
+          dialogMessage(presetsDialog, "Preset eliminado.");
+        }
+      } catch (err) {
+        showPresetError("eliminar el preset", endpoint, err);
+      }
+    }
+
+    async function waitForJob() {
+      for (let i = 0; i < 240; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const status = await api("/status");
+        if (!status.busy) {
+          if (status.state === "error") throw new Error(status.last_error || "Error de generación.");
+          return status;
+        }
+      }
+      throw new Error("Han pasado dos minutos. Actualiza la vista para comprobar el estado.");
+    }
+
+    async function runGeneration(action, endpoint, start, successMessage) {
+      if (generationPending || serverBusy) return;
+      generationPending = true;
+      clearError();
+      updateGenerationForm();
+      setStatus("Generando…", "busy");
+      try {
+        await start();
+        const status = await waitForJob();
+        await refreshThumbnails();
+        toast(successMessage(status));
+      } catch (err) {
+        showError(action, endpoint, err);
+      } finally {
+        generationPending = false;
+        await loadStatus();
+      }
+    }
+
+    async function generateThumbnail(event) {
+      event.preventDefault();
+      const draft = {
+        title: byId("gTitle").value,
+        subtitle: byId("gSubtitle").value,
+        query: byId("gQuery").value.trim(),
+        filename: byId("gFilename").value.trim(),
+        variations: Number(byId("gVariations").value || 1),
+        site_url: byId("gWebsite").value.trim(),
+        async: true,
+      };
+      await runGeneration("generar la miniatura", "/generate", async () => {
+        if (bgImg) {
+          const exportCanvas = document.createElement("canvas");
+          exportCanvas.width = 1920;
+          exportCanvas.height = 1080;
+          drawBgToCanvas(exportCanvas);
+          const uploaded = await postJson("/backgrounds/upload", {
+            image_data_url: exportCanvas.toDataURL("image/png"),
+          });
+          draft.background_id = uploaded.background_id;
+        }
+        await postJson("/generate", draft);
+      }, () => "Miniatura creada y activa.");
     }
 
     let bgImg = null;
@@ -900,301 +1321,573 @@
       canvas.addEventListener("pointercancel", () => { bgState.dragging = false; });
     })();
 
-    async function runGarbageCollector() {
-      clearError();
-      try {
-        const res = await api("/gc", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }, "Clean Old Thumbnails");
-        toast(`GC complete: removed ${res.deleted_count}, kept ${res.kept_count}`);
-        await refreshThumbnailsAndYouTube();
-      } catch (err) {}
+    function openGallery() {
+      byId("gallerySearch").value = "";
+      byId("galleryNotice").hidden = true;
+      galleryDialog.showModal();
+      renderGalleryResults(true);
     }
 
-    async function generateCustom(e) {
-      e.preventDefault();
-      clearError();
-      try {
-        let backgroundId;
-        if (bgImg) {
-          toast("Uploading edited background...");
-          const exportCanvas = document.createElement("canvas");
-          exportCanvas.width = 1920;
-          exportCanvas.height = 1080;
-          drawBgToCanvas(exportCanvas);
-          const dataUrl = exportCanvas.toDataURL("image/png");
-          const upRes = await api("/backgrounds/upload", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image_data_url: dataUrl }),
-          }, "Upload Background");
-          backgroundId = upRes.background_id;
-        }
+    function gallerySearchText(text) {
+      return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+    }
 
-        toast("Generating thumbnail...");
-        await api("/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: document.getElementById("gTitle").value,
-            subtitle: document.getElementById("gSubtitle").value,
-            query: document.getElementById("gQuery").value,
-            background_id: backgroundId,
-            filename: document.getElementById("gFilename").value || undefined,
-            variations: parseInt(document.getElementById("gVariations").value || "1", 10),
-            async: true,
-          }),
-        }, "Custom Generate");
-        await waitForJob("Custom Generate", "/generate");
-        toast("Thumbnail generated!");
-        await refreshThumbnailsAndYouTube();
-      } catch (err) {
-        // Error banner already shown by api()/waitForJob()
+    function renderGalleryResults(resetScroll = false) {
+      const terms = gallerySearchText(byId("gallerySearch").value).trim().split(/\s+/).filter(Boolean);
+      const items = galleryItems.filter(item => {
+        const text = gallerySearchText([item.title, item.subtitle, item.filename].join(" "));
+        return terms.every(term => text.includes(term));
+      });
+      const results = byId("galleryResults");
+      results.replaceChildren(...items.map(item => makeThumbnailCard(item, true)));
+      if (resetScroll) results.parentElement.scrollTop = 0;
+      byId("galleryResultsCount").textContent = items.length === 1 ? "1 miniatura" : items.length + " miniaturas";
+      if (!items.length) {
+        results.textContent = terms.length ? "No se encontraron miniaturas." : "Aún no hay miniaturas.";
       }
+    }
+
+    function makeThumbnailCard(item, detailed = false) {
+      const title = thumbnailTitle(item);
+      const card = document.createElement("article");
+      card.className = item.is_latest ? "thumb-card is-latest" : "thumb-card";
+      const select = makeButton("", "thumb-select", () => setAsLatest(item));
+      select.setAttribute("aria-label", "Seleccionar miniatura: " + title);
+      select.setAttribute("aria-pressed", String(item.is_latest));
+      if (!detailed) select.title = title;
+      const img = document.createElement("img");
+      img.src = thumbnailUrl(item.filename, item.modified_at);
+      img.alt = "";
+      img.loading = "lazy";
+      const body = document.createElement("span");
+      body.className = "thumb-body";
+      const heading = document.createElement("span");
+      heading.className = "thumb-name";
+      heading.textContent = title;
+      body.append(heading);
+      if (detailed && item.subtitle) {
+        const subtitle = document.createElement("span");
+        subtitle.className = "muted";
+        subtitle.textContent = item.subtitle;
+        body.append(subtitle);
+      }
+      select.append(img, body);
+      if (item.is_latest) {
+        const status = document.createElement("span");
+        status.className = "badge";
+        status.textContent = "Activa";
+        select.append(status);
+      }
+      card.append(select);
+      if (detailed) {
+        const controls = document.createElement("div");
+        controls.className = "thumb-controls";
+        const remove = makeButton("Eliminar", "btn-danger btn-sm", () => deleteThumb(item));
+        remove.setAttribute("aria-label", "Eliminar miniatura: " + title);
+        controls.append(remove);
+        card.append(controls);
+      }
+      return card;
+    }
+
+    function showGalleryError(action, endpoint, err) {
+      if (galleryDialog.open) dialogMessage(galleryDialog, "No se pudo " + action + ". " + err.message, true);
+      else showError(action, endpoint, err);
     }
 
     async function loadGallery() {
-      const data = await api("/thumbnails");
-      document.getElementById("galleryCount").textContent = `${data.count} image(s)`;
-      const el = document.getElementById("gallery");
-      el.innerHTML = "";
-      for (const t of data.thumbnails) {
-        const card = document.createElement("div");
-        card.className = `thumb-card ${t.is_latest ? "is-latest" : ""}`;
-        card.innerHTML = `
-          <img src="${t.url}?t=${Date.now()}" alt="${escapeAttr(t.filename)}" loading="lazy" />
-          <div class="thumb-body">
-            <div class="thumb-name">${escapeHtml(t.filename)}</div>
-            <div class="muted">${escapeHtml(t.title || "")}${t.subtitle ? " — " + escapeHtml(t.subtitle) : ""}</div>
-            <div class="thumb-actions">
-              <button class="${t.is_latest ? "btn-success" : "btn-secondary"} btn-sm"
-                      onclick="setAsLatest('${escapeAttr(t.filename)}')">
-                ${t.is_latest ? "✓ Active /latest" : "Set as /latest"}
-              </button>
-              <button class="btn-danger btn-sm" style="flex:0;" onclick="deleteThumb('${escapeAttr(t.filename)}')">✕</button>
-            </div>
-          </div>
-        `;
-        el.appendChild(card);
+      try {
+        const { count, thumbnails } = await api("/thumbnails");
+        galleryItems = thumbnails;
+        byId("galleryCount").textContent = count === 1 ? "1 miniatura" : count + " miniaturas";
+        const gallery = byId("gallery");
+        const scrollPosition = gallery.scrollLeft;
+        byId("galleryToggle").disabled = !count;
+        gallery.replaceChildren(...galleryItems.map(item => makeThumbnailCard(item)));
+        gallery.scrollLeft = scrollPosition;
+        if (!count) gallery.textContent = "Aún no hay miniaturas. Puedes generar la primera en Crear.";
+        if (galleryDialog.open) renderGalleryResults();
+      } catch (err) {
+        showGalleryError("cargar la galería", "/thumbnails", err);
       }
     }
 
-    async function setAsLatest(filename) {
+    async function setAsLatest(item) {
+      if (item.is_latest || thumbnailActivationPending) return;
+      thumbnailActivationPending = true;
+      const currentView = activeView;
+      clearError();
       try {
-        await api("/latest", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename }),
-        });
-        toast(`/latest set to ${filename}`);
-        await refreshThumbnailsAndYouTube();
+        await postJson("/latest", { filename: item.filename });
+        await refreshThumbnails();
+        const gallery = byId(galleryDialog.open ? "galleryResults" : "gallery");
+        const activeButton = gallery.querySelector(".is-latest .thumb-select");
+        if (activeView === currentView && activeButton) {
+          activeButton.focus({ preventScroll: true });
+        }
+        dialogMessage(galleryDialog, "Miniatura activa: " + thumbnailTitle(item));
       } catch (err) {
-        toast(err.message, true);
+        showGalleryError("activar la miniatura", "/latest", err);
+      } finally {
+        thumbnailActivationPending = false;
       }
     }
 
-    async function deleteThumb(filename) {
-      if (!confirm(`Delete ${filename}?`)) return;
+    async function deleteThumb(item) {
+      const name = thumbnailTitle(item);
+      const activeNotice = item.is_latest ? "\n\nLa imagen activa cambiará a la más reciente disponible." : "";
+      if (!confirm("¿Eliminar «" + name + "»?" + activeNotice)) return;
+      const endpoint = "/thumbnails/" + encodeURIComponent(item.filename);
+      clearError();
       try {
-        await api(`/thumbnails/${encodeURIComponent(filename)}`, { method: "DELETE" });
-        toast(`Deleted ${filename}`);
-        await refreshThumbnailsAndYouTube();
+        await api(endpoint, { method: "DELETE" });
+        await refreshThumbnails();
+        if (galleryDialog.open) byId("gallerySearch").focus();
+        dialogMessage(galleryDialog, "Miniatura eliminada.");
       } catch (err) {
-        toast(err.message, true);
+        showGalleryError("eliminar la miniatura", endpoint, err);
       }
     }
+
+    async function runGarbageCollector() {
+      if (!confirm("¿Limpiar las miniaturas antiguas de la galería?")) return;
+      clearError();
+      try {
+        const result = await postJson("/gc", {});
+        await refreshThumbnails();
+        const removed = result.deleted_count;
+        dialogMessage(galleryDialog, removed ? "Miniaturas eliminadas: " + removed : "No había miniaturas antiguas para eliminar.");
+      } catch (err) {
+        showGalleryError("limpiar la galería", "/gc", err);
+      }
+    }
+
+    const csvFields = [
+      ["Filename", "Archivo"],
+      ["Title", "Título"],
+      ["Subtitle", "Subtítulo"],
+      ["Unsplash_Keyword_or_URL", "Fondo"],
+      ["Variations", "Variantes"],
+    ];
 
     async function loadCsv() {
-      const data = await api("/csv");
-      csvRows = data.rows || [];
-      renderCsvTable();
+      try {
+        const data = await api("/csv");
+        csvRows = data.rows || [];
+        renderCsvTable();
+      } catch (err) {
+        showError("cargar la tabla", "/csv", err);
+      }
     }
 
     function renderCsvTable() {
-      const body = document.getElementById("csvBody");
-      body.innerHTML = "";
-      csvRows.forEach((row, idx) => {
+      const body = byId("csvBody");
+      body.replaceChildren();
+      csvRows.forEach((row, index) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td><input value="${escapeAttr(row.Filename || "")}" oninput="csvRows[${idx}].Filename=this.value" /></td>
-          <td><input value="${escapeAttr(row.Title || "")}" oninput="csvRows[${idx}].Title=this.value" /></td>
-          <td><input value="${escapeAttr(row.Subtitle || "")}" oninput="csvRows[${idx}].Subtitle=this.value" /></td>
-          <td><input value="${escapeAttr(row.Unsplash_Keyword_or_URL || "")}" oninput="csvRows[${idx}].Unsplash_Keyword_or_URL=this.value" /></td>
-          <td><input type="number" min="1" max="10" value="${escapeAttr(row.Variations || "1")}" oninput="csvRows[${idx}].Variations=this.value" /></td>
-          <td><button class="btn-danger btn-sm" onclick="removeCsvRow(${idx})">✕</button></td>
-        `;
-        body.appendChild(tr);
+        for (const [key, label] of csvFields) {
+          const input = document.createElement("input");
+          input.setAttribute("aria-label", label + ", fila " + (index + 1));
+          if (key === "Variations") {
+            input.type = "number";
+            input.min = "1";
+            input.max = "10";
+          }
+          input.value = row[key] || (key === "Variations" ? "1" : "");
+          input.addEventListener("input", () => { row[key] = input.value; });
+          tr.insertCell().append(input);
+        }
+        const remove = makeButton("Quitar", "btn-danger btn-sm", () => {
+          csvRows.splice(index, 1);
+          renderCsvTable();
+        });
+        remove.setAttribute("aria-label", "Quitar fila " + (index + 1));
+        tr.insertCell().append(remove);
+        body.append(tr);
       });
     }
 
     function addCsvRow() {
       csvRows.push({ Filename: "", Title: "", Subtitle: "", Unsplash_Keyword_or_URL: "iglesia", Variations: "1" });
       renderCsvTable();
-    }
-
-    function removeCsvRow(idx) {
-      csvRows.splice(idx, 1);
-      renderCsvTable();
+      byId("csvBody").lastElementChild.querySelector("input").focus();
     }
 
     async function saveCsv(runBatch) {
+      if (runBatch) {
+        await runGeneration(
+          "generar el lote", "/csv",
+          () => postJson("/csv", { rows: csvRows, run: true, async: true }),
+          status => "Miniaturas generadas: " + (status.last_files || []).length,
+        );
+        return;
+      }
       clearError();
       try {
-        if (runBatch) toast("Saving CSV and running batch...");
-        await api("/csv", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows: csvRows, run: runBatch, async: runBatch }),
-        }, runBatch ? "Save & Run Batch CSV" : "Save CSV");
-        if (runBatch) {
-          const st = await waitForJob("Batch CSV", "/csv");
-          toast(`Batch done: ${(st.last_files || []).length} image(s) generated`);
-          await refreshThumbnailsAndYouTube();
-        } else {
-          toast("CSV saved!");
-        }
+        await postJson("/csv", { rows: csvRows, run: false, async: false });
+        toast("Tabla guardada.");
       } catch (err) {
-        // Error banner already shown
+        showError("guardar la tabla", "/csv", err);
       }
+    }
+
+    let youtubeConnected = false;
+    let youtubePending = false;
+    let testedYouTubeTarget = null;
+    let youtubePreviewTitle = "";
+    let previewRequest = 0;
+    let reviewedPublication = null;
+    const youtubeDialog = byId("ytReviewDialog");
+    youtubeDialog.addEventListener("close", () => { reviewedPublication = null; });
+
+    function updateYouTubeReviewButton(hasImage) {
+      const button = byId("ytReviewButton");
+      if (hasImage !== undefined) button.dataset.hasImage = String(hasImage);
+      button.disabled = !youtubeConnected || youtubePending || !testedYouTubeTarget || button.dataset.hasImage !== "true";
+      byId("ytTestButton").disabled = youtubePending;
     }
 
     async function loadYouTubeStatus() {
+      const badge = byId("ytStatusBadge");
+      const connect = byId("ytConnectBtn");
+      const disconnect = byId("ytDisconnectBtn");
+      const hint = byId("ytAuthHint");
+      byId("ytAuthRow").classList.remove("hidden");
       try {
-        const st = await api("/youtube/status");
-        const badge = document.getElementById("ytStatusBadge");
-        const authRow = document.getElementById("ytAuthRow");
-        const connectBtn = document.getElementById("ytConnectBtn");
-        const disconnectBtn = document.getElementById("ytDisconnectBtn");
-        const hint = document.getElementById("ytAuthHint");
-
-        if (!st.libs_available) {
-          badge.textContent = "Libs Missing";
-          badge.className = "badge warn";
-          authRow.classList.remove("hidden");
-          connectBtn.classList.add("hidden");
-          disconnectBtn.classList.add("hidden");
-          hint.textContent = "Install google-api-python-client & google-auth-oauthlib.";
-        } else if (!st.client_secrets_exists) {
-          badge.textContent = "No client_secrets.json";
-          badge.className = "badge warn";
-          authRow.classList.remove("hidden");
-          connectBtn.classList.add("hidden");
-          disconnectBtn.classList.add("hidden");
-          hint.textContent = "Place client_secrets.json in app directory to enable OAuth.";
-        } else if (!st.authenticated) {
-          badge.textContent = "Not Connected";
-          badge.className = "badge warn";
-          authRow.classList.remove("hidden");
-          connectBtn.classList.remove("hidden");
-          connectBtn.textContent = "Connect YouTube Account";
-          disconnectBtn.classList.add("hidden");
-          hint.textContent = "Click to authorize YouTube channel.";
+        const status = await api("/youtube/status");
+        const configured = status.libs_available && status.client_secrets_exists;
+        youtubeConnected = configured && status.authenticated;
+        badge.textContent = youtubeConnected ? "Conectado" : configured ? "Sin conectar" : "Sin configurar";
+        badge.className = youtubeConnected ? "badge" : "badge warn";
+        connect.classList.toggle("hidden", !configured);
+        disconnect.classList.toggle("hidden", !youtubeConnected);
+        connect.textContent = youtubeConnected ? "Cambiar cuenta" : "Conectar YouTube";
+        if (!configured) {
+          hint.textContent = "YouTube todavía no está configurado en este equipo.";
         } else {
-          badge.textContent = "Connected";
-          badge.className = "badge";
-          authRow.classList.remove("hidden");
-          connectBtn.classList.remove("hidden");
-          connectBtn.textContent = "Reconnect / Switch Account";
-          disconnectBtn.classList.remove("hidden");
-          hint.textContent = "Authorized. Switch channel or disconnect if needed.";
-          await loadBroadcasts();
+          hint.textContent = youtubeConnected ? "" : "Conecta la cuenta del canal para actualizar un directo.";
         }
-      } catch (e) {}
+
+      } catch (err) {
+        youtubeConnected = false;
+        badge.textContent = "Sin conexión";
+        badge.className = "badge err";
+        connect.classList.add("hidden");
+        disconnect.classList.add("hidden");
+        hint.textContent = "No se pudo consultar la conexión con YouTube.";
+        showError("consultar YouTube", "/youtube/status", err);
+      } finally {
+        updateYouTubeReviewButton();
+      }
     }
 
     async function disconnectYouTube() {
-      if (!confirm("Disconnect YouTube account and remove saved token?")) return;
+      if (!confirm("¿Desconectar la cuenta de YouTube?")) return;
       clearError();
       try {
-        await api("/youtube/disconnect", { method: "POST" }, "Disconnect YouTube");
-        document.getElementById("ytBroadcastSelect").innerHTML = '<option value="">-- Auto-detect active / upcoming --</option>';
-        toast("YouTube account disconnected.");
+        await api("/youtube/disconnect", { method: "POST" });
+        byId("ytBroadcastId").value = "";
+        invalidateYouTubePreview();
         await loadYouTubeStatus();
+        toast("Cuenta de YouTube desconectada.");
       } catch (err) {
-        // Error banner already shown
+        showError("desconectar YouTube", "/youtube/disconnect", err);
       }
     }
 
-    async function loadBroadcasts() {
+    function invalidateYouTubePreview() {
+      previewRequest++;
+      testedYouTubeTarget = null;
+      reviewedPublication = null;
+      byId("ytConnectionResult").textContent = "Comprueba el directo antes de actualizarlo.";
+      byId("ytPreviewTitle").textContent = byId("ytTitleInput").value.trim() || youtubePreviewTitle || "Sin título";
+      updateYouTubeReviewButton();
+    }
+
+    function youtubeOptions() {
+      return {
+        broadcast_id: byId("ytBroadcastId").value.trim(),
+        title: byId("ytTitleInput").value.trim(),
+      };
+    }
+
+    async function loadYouTubePreview(verifyConnection = false) {
+      const request = ++previewRequest;
+      const options = youtubeOptions();
+      const endpoint = "/youtube/preview";
+      updateYouTubeReviewButton(false);
       try {
-        const data = await api("/youtube/broadcasts");
-        const sel = document.getElementById("ytBroadcastSelect");
-        sel.innerHTML = '<option value="">-- Auto-detect active / upcoming --</option>';
-        for (const b of data.broadcasts || []) {
-          const opt = document.createElement("option");
-          opt.value = b.id;
-          opt.textContent = `[${b.lifecycle_status}] ${b.title} (${b.id})`;
-          sel.appendChild(opt);
+        const data = await postJson(endpoint, { ...options, verify_connection: verifyConnection });
+        if (request !== previewRequest) return null;
+        showImage(
+          byId("ytPreviewImg"), byId("ytPreviewEmpty"),
+          data.latest_file ? thumbnailUrl(data.latest_file) : "",
+          data.latest_file ? "Cargando imagen…" : "Aún no hay una miniatura activa.",
+        );
+        youtubePreviewTitle = data.title || "Sin título";
+        byId("ytPreviewTitle").textContent = youtubePreviewTitle;
+        if (data.channel_title) {
+          byId("ytPreviewChannel").textContent = data.channel_title;
+          byId("ytChannelAvatar").textContent = data.channel_title.slice(0, 1).toUpperCase();
         }
-      } catch (e) {}
-    }
-
-    function onSelectBroadcast() {
-      const val = document.getElementById("ytBroadcastSelect").value;
-      if (val) document.getElementById("ytBroadcastId").value = val;
-      loadYouTubePreview();
-    }
-
-    async function connectYouTube() {
-      try {
-        const data = await api("/youtube/auth/start");
-        window.open(data.auth_url, "_blank");
+        updateYouTubeReviewButton(Boolean(data.latest_file));
+        return { data, options };
       } catch (err) {
-        toast(err.message, true);
+        if (request === previewRequest) showError("cargar la vista previa", "/youtube/preview", err);
+        return null;
       }
     }
 
-    async function loadYouTubePreview() {
+    async function testYouTubeConnection() {
+      if (youtubePending) return;
+      youtubePending = true;
+      testedYouTubeTarget = null;
+      updateYouTubeReviewButton();
+      clearError();
+      byId("ytConnectionResult").textContent = "Comprobando el directo…";
       try {
-        const bid = document.getElementById("ytBroadcastId").value.trim();
-        const url = bid ? `/youtube/preview?broadcast_id=${encodeURIComponent(bid)}` : "/youtube/preview";
-        const data = await api(url);
-        document.getElementById("ytPreviewTitle").textContent = data.title || "(no title metadata)";
-        document.getElementById("ytPreviewLicense").textContent = data.license || "(no license metadata)";
-        const descWrap = document.getElementById("ytPreviewDescWrap");
-        if (data.description) {
-          descWrap.classList.remove("hidden");
-          document.getElementById("ytPreviewDesc").textContent = data.description;
-        } else {
-          descWrap.classList.add("hidden");
+        const preview = await loadYouTubePreview(true);
+        if (!preview) {
+          byId("ytConnectionResult").textContent = "No se pudo comprobar el directo. Revisa el aviso.";
+          return;
         }
-      } catch (e) {}
+        testedYouTubeTarget = preview.data.broadcast_id;
+        byId("ytConnectionResult").textContent = "Conexión comprobada · " + (preview.data.broadcast_title || testedYouTubeTarget);
+      } finally {
+        youtubePending = false;
+        updateYouTubeReviewButton();
+      }
+    }
+
+    async function reviewYouTube() {
+      if (youtubePending || !testedYouTubeTarget) return;
+      youtubePending = true;
+      updateYouTubeReviewButton();
+      clearError();
+      try {
+        const latest = await api("/latest?format=json");
+        const preview = await loadYouTubePreview();
+        if (!preview) return;
+        const { data, options } = preview;
+        if (data.latest_file !== latest.filename) {
+          toast("La miniatura activa cambió. Vuelve a revisar la publicación.", true);
+          return;
+        }
+        const targetId = testedYouTubeTarget;
+        byId("ytReviewBroadcast").textContent = targetId
+          ? targetId
+          : "Directo activo o próximo (selección automática)";
+        byId("ytReviewTitle").textContent = data.title || "Título actual del directo";
+        byId("ytReviewImg").src = byId("ytPreviewImg").src;
+        reviewedPublication = {
+          latest,
+          payload: { broadcast_id: targetId || undefined, title: options.title || undefined },
+        };
+        youtubeDialog.showModal();
+      } catch (err) {
+        showError("preparar la publicación", "/latest", err);
+      } finally {
+        youtubePending = false;
+        updateYouTubeReviewButton();
+      }
     }
 
     async function pushToYouTube() {
+      if (!reviewedPublication || youtubePending) return;
+      youtubePending = true;
+      updateYouTubeReviewButton();
+      const { latest, payload } = reviewedPublication;
+      youtubeDialog.close();
+      clearError();
       try {
-        toast("Updating YouTube livestream...");
-        const payload = {};
-        const bid = document.getElementById("ytBroadcastId").value.trim();
-        const titleOverride = document.getElementById("ytTitleInput").value.trim();
-        if (bid) payload.broadcast_id = bid;
-        if (titleOverride) payload.title = titleOverride;
-        const res = await api("/youtube/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        toast(`YouTube updated (${res.broadcast_id})!`);
+        const current = await api("/latest?format=json");
+        if (current.filename !== latest.filename || current.modified_at !== latest.modified_at) {
+          await loadYouTubePreview();
+          toast("La miniatura activa cambió. Vuelve a revisar la publicación.", true);
+          return;
+        }
+        await postJson("/youtube/update", payload);
+        toast("Directo de YouTube actualizado.");
         await loadYouTubePreview();
       } catch (err) {
-        toast(err.message, true);
+        showError("actualizar el directo de YouTube", "/youtube/update", err);
+      } finally {
+        youtubePending = false;
+        updateYouTubeReviewButton();
       }
     }
 
-    function escapeHtml(s) {
-      return String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-    }
-    function escapeAttr(s) {
-      return escapeHtml(s);
-    }
-
-    async function refreshThumbnailsAndYouTube() {
-      await Promise.all([loadStatus(), loadLatest(), loadGallery(), loadYouTubePreview()]);
+    async function refreshThumbnails() {
+      const requests = [loadLatest(), loadGallery()];
+      if (activeView === "youtube") requests.push(loadYouTubePreview());
+      await Promise.all(requests);
     }
 
-    async function refreshAll() {
-      await Promise.all([loadStatus(), loadLatest(), loadPresets(), loadGallery(), loadCsv(), loadYouTubeStatus(), loadYouTubePreview()]);
+    async function refreshCurrentView() {
+      clearError();
+      const requests = [loadStatus(), refreshThumbnails()];
+      if (activeView === "youtube") requests.push(loadYouTubeStatus());
+      await Promise.all(requests);
     }
 
-    refreshAll();
+    function showView() {
+      const requested = window.location.hash.slice(1);
+      const connected = new URLSearchParams(window.location.search).get("youtube") === "connected";
+      const viewName = requested === "galeria" ? "crear" : requested;
+      activeView = views.some(view => view.dataset.view === viewName) ? viewName : connected ? "youtube" : "crear";
+      for (const view of views) view.hidden = view.dataset.view !== activeView;
+      for (const link of navLinks) {
+        if (link.hash === "#" + activeView) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+      }
+      if (requested === "galeria") byId("galeria").scrollIntoView();
+      refreshCurrentView();
+    }
+
+    function chooseWallpaper(button, remember = true) {
+      byId("appWallpaper").src = button.querySelector("img").src;
+      for (const choice of document.querySelectorAll("[data-wallpaper]")) {
+        const selected = choice === button;
+        choice.setAttribute("aria-pressed", String(selected));
+        choice.querySelector("[aria-hidden]").hidden = !selected;
+      }
+      byId("wallpaperNotice").textContent = "Fondo aplicado: " + button.textContent.replace("Activo", "").trim() + ".";
+      if (remember) {
+        try {
+          localStorage.setItem("thumbnail-bridge-wallpaper", button.dataset.wallpaper);
+        } catch {
+          byId("wallpaperNotice").textContent = "Fondo aplicado. El navegador no permite guardar la selección para la próxima visita.";
+        }
+      }
+    }
+
+    try {
+      const savedWallpaper = localStorage.getItem("thumbnail-bridge-wallpaper");
+      const choice = [...document.querySelectorAll("[data-wallpaper]")].find(button => button.dataset.wallpaper === savedWallpaper);
+      if (choice) chooseWallpaper(choice, false);
+    } catch {
+      // The default wallpaper remains available when browser storage is blocked.
+    }
+
+    const tutorialSteps = [
+      { view: "crear", target: ".navigation", title: "Miniatura y YouTube", text: "Desde este selector cambias entre crear imágenes y actualizar un directo de YouTube. Usa Siguiente y Anterior para recorrer la página. Puedes salir con Saltar tutorial o Escape." },
+      { view: "crear", target: "#wallpaperButton", title: "Elige el fondo de la página", text: "Elegir fondo abre una ventana con las imágenes disponibles. Pulsa una para aplicarla. La selección queda guardada en este navegador para la próxima visita." },
+      { view: "crear", target: "#galeria", title: "Elige la miniatura activa", text: "La galería reúne tus imágenes. Desliza hacia la derecha para ver más. Al pulsar una miniatura se convierte en la activa y aparece el indicador Activa." },
+      { view: "crear", target: "#galleryToggle", title: "Busca y organiza la galería", text: "Ver todas abre una ventana con todas las miniaturas y un buscador. Allí puedes seleccionar imágenes, eliminarlas o limpiar las antiguas." },
+      { view: "crear", target: '[aria-controls="presetsDialog"]', title: "Reutiliza tus presets", text: "Ver presets abre tus plantillas guardadas. Cargar preset rellena el formulario. También puedes crear, editar y eliminar presets para adaptarlos a tus necesidades." },
+      { view: "crear", target: "#gTitle", title: "Título y subtítulo", text: "Escribe el título y el subtítulo que aparecerán en la imagen. Ambos son obligatorios. Puedes modificar todos los campos después de cargar un preset." },
+      { view: "crear", target: "#gQuery", title: "Busca un fondo", text: "Introduce una palabra para buscar una imagen de fondo o pega un enlace de imagen." },
+      { view: "crear", target: "#gBgFile", title: "Usa una imagen de tu ordenador", text: "Seleccionar archivo permite subir tu propio fondo. Al elegirlo aparecen el encuadre, zoom, brillo, contraste y botones para girar, restablecer o quitar la imagen." },
+      { view: "crear", target: "#gFilename", title: "Archivo, variantes y web", text: "Puedes poner un nombre al archivo y elegir cuántas variantes generar. La web aparece rellenada con sagunto.adventista.es y puedes editarla." },
+      { view: "crear", target: "#generateButton", title: "Genera la miniatura", text: "Generar miniatura crea las imágenes con los datos del formulario. El estado de la aplicación muestra el progreso y la imagen generada pasa a ser la activa." },
+      { view: "crear", target: "#latestImg", title: "Revisa el resultado", text: "Miniatura activa muestra la imagen seleccionada, su título y subtítulo. Abrir imagen permite verla a tamaño completo. Puedes consultar el crédito del fondo cuando esté disponible.", fallback: "#latestEmpty" },
+      { view: "crear", target: "#batchSection > summary", title: "Genera varias miniaturas", text: "Generar por lotes abre una tabla. Añade o quita filas, introduce los datos y usa Guardar tabla para conservarlos o Guardar y generar para crear todo el lote." },
+      { view: "youtube", target: "#ytAuthRow", title: "Conecta tu canal", text: "YouTube muestra si la cuenta está conectada. Cuando las credenciales están configuradas, Conectar YouTube permite autorizar el canal. También puedes cambiar de cuenta o desconectarla." },
+      { view: "youtube", target: "#ytBroadcastId", title: "Selecciona el directo", text: "Video ID es opcional. Déjalo vacío para detectar un directo activo o próximo, o escribe el identificador del directo que quieres actualizar." },
+      { view: "youtube", target: "#ytTitleInput", title: "Prepara el título", text: "Puedes escribir un título para el directo. Si dejas este campo vacío, se utiliza el título de la miniatura." },
+      { view: "youtube", target: ".youtube-video", title: "Vista previa de la publicación", text: "Aquí ves la miniatura activa con el título debajo. Cuando compruebas la conexión, también aparece el nombre del canal." },
+      { view: "youtube", target: "#ytTestButton", title: "Comprueba el destino", text: "Probar conexión con el directo comprueba el acceso y localiza el directo elegido. El resultado aparece debajo del botón. Si falla, revisa el aviso y la configuración del canal." },
+      { view: "youtube", target: "#ytReviewButton", title: "Actualiza tu directo", text: "Tras comprobar la conexión, Actualizar cambios en el directo abre una confirmación con la imagen, el título y el destino. Al confirmar se envían los cambios a YouTube." },
+      { view: "crear", target: ".header-top > .actions", title: "Estado y ayuda", text: "El indicador superior muestra el estado de la aplicación. Actualizar vista vuelve a consultar los datos. Puedes repetir este recorrido desde Tutorial cuando lo necesites." },
+    ];
+    const tutorialDialog = byId("tutorialDialog");
+    let tutorialIndex = 0;
+    let tutorialOrigin = null;
+
+    function startTutorial() {
+      if (tutorialDialog.open) return;
+      tutorialOrigin = { hash: location.hash, scroll: window.scrollY };
+      tutorialIndex = 0;
+      tutorialDialog.showModal();
+      renderTutorial();
+    }
+
+    function renderTutorial() {
+      const step = tutorialSteps[tutorialIndex];
+      if (activeView !== step.view) {
+        history.replaceState(null, "", "#" + step.view);
+        showView();
+      }
+      byId("tutorialStep").textContent = "Paso " + (tutorialIndex + 1) + " de " + tutorialSteps.length;
+      byId("tutorialProgress").max = tutorialSteps.length;
+      byId("tutorialProgress").value = tutorialIndex + 1;
+      byId("tutorialTitle").textContent = step.title;
+      byId("tutorialText").textContent = step.text;
+      byId("tutorialBack").disabled = tutorialIndex === 0;
+      byId("tutorialNext").textContent = tutorialIndex === tutorialSteps.length - 1 ? "Finalizar" : "Siguiente";
+      let target = document.querySelector(step.target);
+      if (step.fallback && (!target || target.hidden)) target = document.querySelector(step.fallback);
+      target.scrollIntoView({ block: "start", behavior: "instant" });
+      window.scrollBy({ top: -document.querySelector(".site-header").offsetHeight - 18, behavior: "instant" });
+      positionTutorialFocus();
+    }
+
+    function positionTutorialFocus() {
+      if (!tutorialDialog.open) return;
+      const step = tutorialSteps[tutorialIndex];
+      let target = document.querySelector(step.target);
+      if (step.fallback && (!target || target.hidden)) target = document.querySelector(step.fallback);
+      const rect = target.getBoundingClientRect();
+      const focus = byId("tutorialFocus");
+      focus.style.left = Math.max(4, rect.left - 5) + "px";
+      focus.style.top = Math.max(4, rect.top - 5) + "px";
+      focus.style.width = Math.min(innerWidth - 8, rect.width + 10) + "px";
+      focus.style.height = Math.min(innerHeight - 8, rect.height + 10) + "px";
+      const margin = 16;
+      const gap = 14;
+      const panel = tutorialDialog.getBoundingClientRect();
+      const maxLeft = Math.max(margin, innerWidth - panel.width - margin);
+      const maxTop = Math.max(margin, innerHeight - panel.height - margin);
+      const clampLeft = left => Math.max(margin, Math.min(left, maxLeft));
+      const clampTop = top => Math.max(margin, Math.min(top, maxTop));
+      const positions = [
+        { left: rect.right + gap, top: clampTop(rect.top) },
+        { left: rect.left - panel.width - gap, top: clampTop(rect.top) },
+        { left: clampLeft(rect.left), top: rect.bottom + gap },
+        { left: clampLeft(rect.left), top: rect.top - panel.height - gap },
+      ];
+      const fits = position => position.left >= margin && position.top >= margin
+        && position.left + panel.width <= innerWidth - margin
+        && position.top + panel.height <= innerHeight - margin;
+      const position = positions.find(fits) || positions.map(candidate => ({
+        left: clampLeft(candidate.left), top: clampTop(candidate.top),
+      })).sort((first, second) => overlap(first) - overlap(second))[0];
+      function overlap(candidate) {
+        const width = Math.max(0, Math.min(candidate.left + panel.width, rect.right) - Math.max(candidate.left, rect.left));
+        const height = Math.max(0, Math.min(candidate.top + panel.height, rect.bottom) - Math.max(candidate.top, rect.top));
+        return width * height;
+      }
+      tutorialDialog.style.left = position.left + "px";
+      tutorialDialog.style.top = position.top + "px";
+    }
+
+    function moveTutorial(direction) {
+      if (tutorialIndex + direction === tutorialSteps.length) {
+        finishTutorial();
+        return;
+      }
+      tutorialIndex = Math.max(0, tutorialIndex + direction);
+      renderTutorial();
+    }
+
+    function finishTutorial() {
+      tutorialDialog.close();
+    }
+
+    tutorialDialog.addEventListener("close", () => {
+      if (tutorialDialog.open || !tutorialOrigin) return;
+      history.replaceState(null, "", location.pathname + location.search + tutorialOrigin.hash);
+      showView();
+      window.scrollTo({ top: tutorialOrigin.scroll, behavior: "instant" });
+      byId("tutorialButton").focus({ preventScroll: true });
+      tutorialOrigin = null;
+    });
+    window.addEventListener("resize", positionTutorialFocus);
+    window.addEventListener("scroll", positionTutorialFocus, { passive: true });
+
+    window.addEventListener("hashchange", showView);
+    showView();
+    loadCsv();
   </script>
 </body>
 </html>

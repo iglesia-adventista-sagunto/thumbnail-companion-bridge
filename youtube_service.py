@@ -198,6 +198,44 @@ class YouTubeService:
             raise ValueError("No active or upcoming YouTube livestreams found. Provide a broadcast_id explicitly.")
         return broadcasts[0]["id"]
 
+    def resolve_stream_key(self, stream_key):
+        youtube = self._build_client()
+        stream_ids = set()
+        page_token = None
+        while True:
+            response = youtube.liveStreams().list(
+                part="cdn", mine=True, maxResults=50, pageToken=page_token,
+            ).execute()
+            for stream in response.get("items", []):
+                key = stream.get("cdn", {}).get("ingestionInfo", {}).get("streamName")
+                if key == stream_key:
+                    stream_ids.add(stream["id"])
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+        if not stream_ids:
+            raise ValueError("La clave de emisión no pertenece al canal conectado.")
+        for status in ("active", "upcoming"):
+            matches = []
+            page_token = None
+            while True:
+                response = youtube.liveBroadcasts().list(
+                    part="contentDetails", broadcastStatus=status,
+                    maxResults=50, pageToken=page_token,
+                ).execute()
+                matches.extend(
+                    broadcast["id"] for broadcast in response.get("items", [])
+                    if broadcast.get("contentDetails", {}).get("boundStreamId") in stream_ids
+                )
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+            if len(matches) > 1:
+                raise ValueError("Hay varios directos asociados a esta clave. Vincula una clave exclusiva al directo que quieres actualizar.")
+            if matches:
+                return matches[0]
+        raise ValueError("No hay ningún directo activo o próximo asociado a esta clave de emisión.")
+
     def get_video_snippet(self, video_id):
         youtube = self._build_client()
         resp = youtube.videos().list(part="snippet", id=video_id).execute()

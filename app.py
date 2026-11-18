@@ -882,7 +882,35 @@ def youtube_preview():
     base_desc = params.get("description") if params.get("description") is not None else ""
 
     broadcast_id = (params.get("broadcast_id") or cfg["youtube"]["default_broadcast_id"] or "").strip()
-    if not base_desc and broadcast_id and yt_service.get_status().get("authenticated"):
+    stream_key = str(params.get("stream_key") or "").strip()
+    if stream_key:
+        if request.method != "POST":
+            return jsonify({"error": "Envía la clave de emisión mediante POST."}), 400
+        try:
+            broadcast_id = yt_service.resolve_stream_key(stream_key)
+        except PermissionError:
+            return jsonify({"error": "Conecta la cuenta de YouTube para usar la clave de emisión."}), 401
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except Exception:
+            return jsonify({"error": "No se pudo buscar el directo por su clave de emisión. Comprueba la conexión y los permisos del canal."}), 502
+    channel_title = ""
+    broadcast_title = ""
+    if params.get("verify_connection"):
+        try:
+            broadcast_id = yt_service.resolve_broadcast_id(broadcast_id)
+            snippet = yt_service.get_video_snippet(broadcast_id)
+            channel_title = snippet.get("channelTitle", "")
+            broadcast_title = snippet.get("title", "")
+            if not base_desc:
+                base_desc = snippet.get("description", "")
+        except PermissionError:
+            return jsonify({"error": "Conecta la cuenta de YouTube para comprobar el directo."}), 401
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except Exception:
+            return jsonify({"error": "No se pudo conectar con el directo. Comprueba la cuenta y los permisos de YouTube."}), 502
+    elif not base_desc and broadcast_id and yt_service.get_status().get("authenticated"):
         try:
             snippet = yt_service.get_video_snippet(broadcast_id)
             base_desc = snippet.get("description", "")
@@ -896,6 +924,8 @@ def youtube_preview():
         "latest_file": latest["filename"] if latest else None,
         "latest_url": "/latest" if latest else None,
         "broadcast_id": broadcast_id or None,
+        "channel_title": channel_title,
+        "broadcast_title": broadcast_title,
         "title": yt_title,
         "license": license_raw,
         "description": yt_desc,
